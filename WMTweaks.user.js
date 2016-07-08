@@ -9,7 +9,7 @@
 // @exclude http://*.heroeswm.ru/chatpost.php
 // @exclude http://*.heroeswm.ru/ch_box.php
 // @exclude http://*.heroeswm.ru/chat.php*
-// @version 1
+// @version 2
 // @grant GM_log
 // @grant GM_getValue
 // @grant GM_setValue
