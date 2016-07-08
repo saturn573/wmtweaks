@@ -1,9 +1,15 @@
 // ==UserScript==
-// @name        WMTweaks
-// @include     http://178.248.235.15/*
-// @include     http://*.heroeswm.ru/*
+// @name WMTweaks
+// @include http://178.248.235.15/*
+// @include http://*.heroeswm.ru/*
 // @exclude http://daily.heroeswm.ru/*
-// @version 1    1
+// @exclude http://*.heroeswm.ru/chatonline.php*
+// @exclude http://*.heroeswm.ru/chat_line.php
+// @exclude http://*.heroeswm.ru/ticker.html*
+// @exclude http://*.heroeswm.ru/chatpost.php
+// @exclude http://*.heroeswm.ru/ch_box.php
+// @exclude http://*.heroeswm.ru/chat.php*
+// @version 1
 // @grant GM_log
 // @grant GM_getValue
 // @grant GM_setValue
@@ -13,7 +19,12 @@
 // @grant GM_xmlhttpRequest
 // ==/UserScript==
 
-
+function Debug_AddObjectInfo(obj, isJSON) {
+	var div = document.createElement('div');
+	div.style = 'display: inline-block; color: white; background: black;';
+	div.innerHTML = isJSON ? JSON.stringify(obj) : Debug_GetObjectValuesString(obj);
+	document.body.appendChild(div);
+}
 
 //u202F
 function Debug_GetObjectValuesString(obj) {
@@ -36,17 +47,34 @@ var availableHostNames = [
     '178.248.235.15'
 ];
 
+/*Ускоренные задания по праздникам (Если нет ускорения то 1)*/
+var holidayBoost = 1;
+
 /*Таймауты гильдий!!??*/
 var guildTimeout = {
-    /*Гильдия рабочих: 60 минут*/
+	/*Гильдия рабочих: 60 минут*/
     Worker: 3600000,
     /*Гильдия воров: 60 минут*/
-    Thief: 3600000
+    Thief: 3600000 / holidayBoost,
     /*Гильдия охотников для БУ 1-3: 5 минут*/
     //HunterLowLevel:  300000,
     /*Гильдия охотников днем: 40 минут*/
     //Hunter: 2400000
 }
+
+var craft_elements = [
+	['абразив', 'abrasive'],
+	['змеиный яд', 'snake_poison'],
+	['клык тигра', 'tiger_tusk'],
+	['ледяной кристалл', 'ice_crystal'],
+	['лунный камень', 'moon_stone'],
+	['огненный кристалл', 'fire_crystal'],
+	['осколок метеорита', 'meteorit'],
+	['цветок ведьм', 'witch_flower'],
+	['цветок ветров', 'wind_flower'],
+	['цветок папоротника', 'fern_flower'],
+	['ядовитый гриб', 'badgrib'],	
+];
 
 /*Хранилище*/
 var Storage = function () { }
@@ -116,7 +144,7 @@ Settings.useSimpleStartPage = true;
 /*Использовать простое меню*/
 Settings.useCustomMenu = true;
 /*Таймеры свернуты*/
-Settings.timersCollapsed = false; 
+Settings.timersCollapsed = undefined; 
 /*Показывать таймеры гильдий в меню*/
 Settings.showTimersAmongMenu = true;
 /*Показывать текущую прочность одетых предметов*/
@@ -147,6 +175,158 @@ Settings.getStorageKey = function () {
     return "Settings";
 }
 
+/*factions*/
+function wmt_Faction() {}
+wmt_Faction.items = [
+	[1, 0, 'рыцарь', 'рыцари', 'рыцаря', 'рыцарей'],
+	[1, 1, 'рыцарь света', 'рыцари света', 'рыцаря света', 'рыцарей света'],
+	[2, 0, 'некромант', 'некроманты', 'некроманта', 'некромантов'],
+	[2, 1, 'некромант - повелитель смерти', 'некроманты - повелители смерти', 'некроманта - повелителя смерти', 'некромантов - повелителей смерти'],
+	[3, 0, 'маг', 'маги', 'мага', 'магов' ],
+	[3, 1, 'маг - разрушитель', 'маги - разрушители', 'мага - разрушителя', 'магов - разрушителей'],
+	[4, 0, 'эльф', 'эльфы', 'эльфа', 'эльфов' ],
+	[4, 1, 'эльф-заклинатель', 'эльфы-заклинатели', 'эльфа-заклинателя', 'эльфов-заклинателей' ],
+	[5, 0, 'варвар', 'варвары', 'варвара', 'варваров'],
+	[5, 1, 'варвар крови', 'варвары крови', 'варвара крови', 'варваров крови'],
+	[5, 2, 'варвар - шаман', 'варвары - шаманы', 'варвара - шамана', 'варваров - шаманов'],
+	[6, 0, 'тёмный эльф', 'тёмные эльфы', 'тёмного эльфа', 'тёмных эльфов'],
+    [6, 1, 'тёмный эльф - укротитель', 'тёмные эльфы - укротители', 'тёмного эльфа - укротителя', 'тёмных эльфов - укротителей'],
+	[7, 0, 'демон', 'демоны', 'демона' , 'демонов'],
+	[7, 1, 'демон тьмы', 'демоны тьмы', 'демона тьмы', 'демонов тьмы'],
+	[8, 0, 'гном', 'гномы', 'гнома', 'гномов'],
+	[9, 0, 'степной варвар', 'степные варвары', 'степного варвара', 'степных варваров'],
+];
+wmt_Faction.getIconUrl = function(f, c) { 
+	return 'http://dcdn.heroeswm.ru/i/r' + (f + (100 * c)) + '.gif';
+}
+/* 
+ * Returns the name of faction
+ * f - faction index
+ * c - class index
+ * k - name kind (0 - nominative singular, 1 - nominative plural, 2 - genetive singular , 3 - genetive plural
+ */
+wmt_Faction.getName = function(f, c, kind) {
+	if (!kind) {
+		kind = 0;
+	}	
+	for (let ii = 0; ii < wmt_Faction.items.length; ii++) {
+		if (wmt_Faction.items[ii][0] == f && wmt_Faction.items[ii][1] == c) {
+			return wmt_Faction.items[ii][2 + kind];
+		}
+	}
+}
+
+/*Mercenary guild task*/
+function wmt_MT(){}
+wmt_MT.taskPattern = [/-\s?захватчики$/, /-\s?разбойники$/, /-монстр$/, /-набеги$/, /^Отряд\s/, /^Армия\s/, /-\sзаговорщики$/];
+wmt_MT.racePattern = [[/^рыц/i, /све/i], [/^(?:нек|пов)/i, /пов/i], [/^маг/i, /раз/i],	[/^эль/i, /зак/i], [/^вар/i, /кро/i, /шам/i], [/^тём/i], [/^дем/i, /тьм/i], [/^гно/i], [/^сте/i]];
+wmt_MT.toString = function(task) {
+	let kindText = [];
+	for (let ii = 0; ii < task.kind.length; ii++) {
+		let kind = task.kind[ii];
+		if ([2, 3].includes(task.id)) {
+			if (wmt_CR.all.length == 0) {
+				wmt_CR.init();
+			}
+			if (wmt_CR.all.length > kind) {
+				kindText.push(wmt_CR.all[kind].Name);
+			}
+			else {
+				kindText.push('entity#' + kind);
+			}
+		}
+		else {
+			kindText.push(wmt_Faction.getName(kind % 100, Math.floor(kind / 100),
+				([4, 5].includes(task.id) ? 3 : 1)));
+		}
+	}
+	 
+	let idText = kindText.join(([4, 5].includes(task.id) ? ' и ' : ', '));
+	switch (task.id) {
+		case 0:
+			idText += ' - захватчики';
+			break;
+		case 1:
+			idText += ' - разбойники';
+			break;
+		case 2:
+			idText += ' - монстр';
+			break;
+		case 3:
+			idText += ' - набеги';
+			break;
+		case 4:
+			idText = 'Отряд ' + idText;
+			break;
+		case 5:
+			idText = 'Армия ' + idText;
+			break;
+		case 6:
+			idText += ' - заговорщики';
+			break;
+		default:
+			idText += " - unknown type #" + task.id;
+	}
+	
+	return idText[0].toUpperCase() + idText.slice(1) + ' {' + task.level + '}';
+}
+wmt_MT.parse = function(text) {
+	var task = {};		
+	let level = /{(\d+)}/.exec(text); 
+	if (!level) {
+		log('Не удалось определить уровень задания в строке: "' + text + '"');
+		return;
+	}
+	task.level = parseInt(level[1]);
+	text = text.replace(/{(\d+)}/, '').trim();
+	
+	for (let ii = 0; ii < wmt_MT.taskPattern.length; ii++) {
+		if (wmt_MT.taskPattern[ii].test(text)) {
+			task.id = ii;
+			text = text.replace(wmt_MT.taskPattern[ii], '').trim();
+			break;			
+		}
+	}
+	
+	if (task.id == undefined) {
+		log('Не удалось определить тип задания в строке: "' + text + '"');
+		return;
+	}
+	else { 
+		task.kind = [];
+	}
+	
+	if ([2, 3].includes(task.id)) {
+		if (wmt_CR.all.length == 0) {
+        		wmt_CR.init();
+   		 }
+		for (let ii = 0; ii < wmt_CR.all.length; ii++) {
+			if (wmt_CR.all[ii].Name == text) {
+				task.kind.push(ii);	
+				break;
+			}	
+		}
+	}
+	else {
+		var kinds = text.split([4, 5].includes(task.id) ? ' и ' : ',');		
+		for (let ii = 0; ii < kinds.length; ii++) {
+			for (let jj = 0; jj < wmt_MT.racePattern.length; jj++) {
+				if (wmt_MT.racePattern[jj][0].test(kinds[ii].trim())) {
+					for (let kk = 1; kk < wmt_MT.racePattern[jj].length; kk++) {
+						if (wmt_MT.racePattern[jj][kk].test(kinds[ii].trim())) {
+							jj +=  100 * kk; //We will get here the class code 101, 102 and so on 		
+							break;
+						}
+					}
+					task.kind.push(jj+1);
+					break;
+				}
+			}
+		}	
+	}
+	return task;			
+} 
+
 
 function wmt_CR(code, name, exp, hp) {
     if (name != undefined && code != undefined && exp != undefined && hp != undefined) {
@@ -173,6 +353,7 @@ wmt_CR.init = function () {
     wmt_CR.add('Чёрные драконы', 'blackdragon', 400, 240);
     wmt_CR.add('Титаны', 'titan', 400, 190);
     wmt_CR.add('Изумрудные драконы', 'emeralddragon', 400, 200);
+    wmt_CR.add('Кристальные драконы', 'crystaldragon', 400, 200);
     wmt_CR.add('Степные циклопы', 'cyclopus', 390, 220);
     wmt_CR.add('Высшие ангелы', 'seraph2', 390, 220);
     wmt_CR.add('Древние бегемоты', 'ancientbehemoth', 390, 250);
@@ -198,6 +379,7 @@ wmt_CR.init = function () {
     wmt_CR.add('Дьяволы', 'devil', 245, 166);
     wmt_CR.add('Рыцари', 'cavalier', 232, 90);
     wmt_CR.add('Древние энты', 'ancienent', 210, 181);
+    wmt_CR.add('Дикие энты', 'savageent', 210, 175);
     wmt_CR.add('Вестники смерти', 'wraith', 205, 100);
     wmt_CR.add('Рогатые жнецы', 'rapukk', 200, 99);
     wmt_CR.add('Ифриты', 'efreeti', 200, 90);
@@ -206,7 +388,7 @@ wmt_CR.init = function () {
     wmt_CR.add('Рыцари смерти', 'deadknight', 190, 100);
     wmt_CR.add('Энты', 'treant', 187, 175);
     wmt_CR.add('Владычицы тени', 'matriarch', 185, 90);
-    wmt_CR.add('Циклопы короли', 'cyclopking', 182, 95);
+    wmt_CR.add('Циклопы-короли', 'cyclopking', 182, 95);
     wmt_CR.add('Черные тролли', 'blacktroll', 180, 180);
     wmt_CR.add('Циклопы', 'cyclop', 172, 85);
     wmt_CR.add('Виверны', 'wyvern', 170, 90);
@@ -235,7 +417,7 @@ wmt_CR.init = function () {
     wmt_CR.add('Птицы грома', 'thunderbird', 115, 65);
     wmt_CR.add('Мумии', 'mummy', 115, 50);
     wmt_CR.add('Злой тигр 2010', 'eviltiger2010', 110, 100);
-    wmt_CR.add('Джинны султаны', 'djinn_sultan', 110, 45);
+    wmt_CR.add('Джинны-султаны', 'djinn_sultan', 110, 45);
     wmt_CR.add('Архиличи', 'archlich', 110, 55);
     wmt_CR.add('Гидры', 'hydra', 108, 80);
     wmt_CR.add('Старшие друиды', 'ddhigh', 105, 34);
@@ -251,7 +433,7 @@ wmt_CR.init = function () {
     wmt_CR.add('Личи', 'lich', 87, 50);
     wmt_CR.add('Палачи', 'executioner', 83, 40);
     wmt_CR.add('Дочери неба', 'sdaughter', 75, 35);
-    wmt_CR.add('Огры маги', 'ogremagi', 74, 65);
+    wmt_CR.add('Огры-маги', 'ogremagi', 74, 65);
     wmt_CR.add('Друиды', 'druid', 74, 34);
     wmt_CR.add('Дочери земли', 'eadaughter', 72, 35);
     wmt_CR.add('Сирены-искусительницы', 'upsiren', 70, 24);
@@ -337,7 +519,7 @@ wmt_CR.init = function () {
     wmt_CR.add('Водные элементали', 'water', 57, 43);
     wmt_CR.add('Могучие каппы', 'kappashoya', 57, 25);
     wmt_CR.add('Минотавры-надсмотрщики', 'taskmaster', 56, 40);
-    wmt_CR.add('Минотавры стражи', 'minotaurguard', 56, 35);
+    wmt_CR.add('Минотавры-стражи', 'minotaurguard', 56, 35);
     wmt_CR.add('Камнееды', 'kamneed', 56, 45);
     wmt_CR.add('Гоблины-охотники', 'goblinhunter6', 56, 26);
     wmt_CR.add('Стальные големы', 'steelgolem', 54, 24);
@@ -368,7 +550,7 @@ wmt_CR.init = function () {
     wmt_CR.add('Послушницы', 'sister', 40, 19);
     wmt_CR.add('Минотавры', 'minotaur', 39, 31);
     wmt_CR.add('Эльфийские лучники', 'elf', 38, 10);
-    wmt_CR.add('Орки вожди', 'orcchief', 38, 18);
+    wmt_CR.add('Орки-вожди', 'orcchief', 38, 18);
     wmt_CR.add('Орки-тираны', 'orcrubak', 38, 20);
     wmt_CR.add('Огненные гончие', 'hotdog', 36, 15);
     wmt_CR.add('Вармонгеры', 'warmong', 36, 20);
@@ -713,6 +895,8 @@ function OwnInfo() { }
 OwnInfo.actualTime = undefined;
 /*Действет благословение Абу-Бекра*/
 OwnInfo.PremiumEnabled = true;
+/*Дополнительный коэффициент эффективности работы*/
+OwnInfo.workEfficiencyBonusFactor = 1;
 /*Последняя работа*/
 OwnInfo.LastWork = {
     /*Время в момент устройства*/
@@ -753,8 +937,18 @@ OwnInfo.Movement = {
 };
 /*Гильдия наемников*/
 OwnInfo.Mercenary = {
+	/*Время начала ожидания ГН*/
     Time: undefined,
-    Interval: undefined
+	/*Остаток времени ожидания ГН*/
+    Interval: undefined,
+	/*История наград*/
+	Rewards: undefined,
+	/*Текущее задание*/
+	Task: undefined,
+	/*Проигранные задания*/
+	Failed: undefined,
+	/*Режим автопилота*/
+	Autopilot: undefined,	
 };
 /*Здоровье*/
 OwnInfo.HP = {
@@ -787,13 +981,9 @@ OwnInfo.Mana = {
 /*Коэффициент трудоголика*/
 OwnInfo.WorkaholicPenaltyFactor = 1;
 /*Эффективность работы*/
-OwnInfo.WorkEfficiencyFactor = 2.2;
+OwnInfo.WorkEfficiencyFactor = 2.4;
 /*Последний бой*/
 OwnInfo.LastBattleId = undefined;
-/*Время последней сдачи задания ГН*/
-OwnInfo.LastMercenaryTime = undefined;
-/*Перечень наград в ГН*/
-OwnInfo.MercenaryRewards = undefined;
 /*Уникальная подпись для передач ресурсов / предметов или выбрасывания предметов */
 OwnInfo.transferSign = undefined;
 OwnInfo.getStorageKey = function () { return 'OwnInfo_' + wmt_page.playerId; };
@@ -853,7 +1043,7 @@ OwnInfo.update = function (obsoleteTime) {
     OwnInfo.store();
 };
 OwnInfo.store = function () {
-    Storage.store(OwnInfo);
+	Storage.store(OwnInfo);
 };
 
 /*Таймеры*/
@@ -899,7 +1089,7 @@ Timer.getMercenary = function () {
             getStartTime: function () { return OwnInfo.Mercenary.Time; },
             getInterval: function () { return OwnInfo.Mercenary.Interval; },
             onclick: function () { location.assign('/mercenary_guild.php'); },
-            onfinish: function () { wmt_Sound.playMorse('g6'); }
+            onfinish: function () { if (location.pathname == '/mercenary_guild.php') { wmt_Sound.beep(); location.reload(); } }
         });
     }
     return Timer._mercenary;
@@ -1055,6 +1245,12 @@ ObjectInfo.prototype = {
 */
 function Map() {}
 Map.sectors = [];
+/*Посты ГН и ближайшие к ним сектора*/
+Map.mercenaryPosts =  [
+	[2, 1, 4, 5, 7, 8, 10, 11, 26, 27],
+	[6, 3, 9, 12, 13, 23, 24],
+	[16, 14, 15, 17, 18],
+	[21, 19, 20, 22]];
 Map.add = function (name, x, y) {
     Map.sectors.push({ id: Map.sectors.length + 1, name: name, x: x, y: y });
 }
@@ -1065,6 +1261,49 @@ Map.find = function (predicate) {
             return Map.sectors[ii];
         }
     }
+}
+/*Проходит по всем доступным секторам */
+Map.forEachConcentric = function (details) {    
+    let radius = 0;
+    let passedSectors = [];
+    let addIfExists = (x, y) => {
+        let sector = Map.getSectorByCoordinates(x, y);
+        if (sector) {
+            passedSectors.push(sector);
+            if (details.handleSector) {
+                details.handleSector({ radius: radius, sector: sector });
+            }
+        }
+    }
+    let startSector;
+    if (details.sectorX && details.sectorY) {
+        startSector = Map.getSectorByCoordinates(details.sectorX, details.sectorY);
+    }
+    else  {
+        if (!details.sectorId) {
+            details.sectorId = 1;
+        }
+        startSector = Map.getSectorById(details.sectorId);
+    }
+    addIfExists(startSector.x, startSector.y);    
+    while (passedSectors.length < Map.sectors.length) {
+        radius++;
+
+        let minX = startSector.x - radius;
+        let maxX = startSector.x + radius;
+        let minY = startSector.y - radius;
+        let maxY = startSector.y + radius;
+        
+        for (let x = minX; x <= maxX; x++) {
+            addIfExists(x, minY);
+            addIfExists(x, maxY);
+        }
+        for (let y = minY + 1; y < maxY; y++) {
+            addIfExists(minX, y);
+            addIfExists(maxX, y);
+        }
+    }
+
 }
 Map.getSectorByName = function(name) { return Map.find(function(s) {return s.name == name; }); }
 /*Возвращает сектор из указанной ссылки*/
@@ -1095,7 +1334,23 @@ Map.getSectorByHref = function (href) {
 Map.getSectorByCoordinates = function (x, y) { return Map.find(function (s) { return s.x == x && s.y == y; }); }
 /*Возвращает сектор с указанным идентификатором*/
 Map.getSectorById = function (id) { return Map.find(function (s) { return s.id == id; }); }
-
+/*Возвращает true если в указанном секторе есть пост наемников*/
+Map.isMercenaryPostThere = function(id) {
+	for (var ii = 0; ii < Map.mercenaryPosts.length; ii++) {
+		if (Map.mercenaryPosts[ii][0] == id) {
+			return true;
+		}
+	}
+	return false;
+}
+/*Возвращает ближайший сектор с постом гильдии наемников*/
+Map.getNearestSectorWithMercenaryPost = function(id) {
+	for (var ii = 0; ii < Map.mercenaryPosts.length; ii++) {
+		if (Map.mercenaryPosts[ii].includes(id)) {
+			return Map.getSectorById(Map.mercenaryPosts[ii][0]);
+		}
+	}
+}
 /*Инициализирует */
 Map.init = (function () {
     
@@ -1136,6 +1391,8 @@ function wmt_item(id) {
 wmt_item.prototype = {
     /*Идентификатор*/
     id: undefined,
+	/*Категория на рынке*/
+	category: undefined,
     /*Название*/
     name: undefined,
     /*Стоимость объявленная*/
@@ -1186,7 +1443,7 @@ wmt_item.prototype = {
 	}
 };
 
-/*Информаци о персонаже*/
+/*Информация о персонаже*/
 function wmt_hero(id) {
     this.id = id;
 }
@@ -1216,7 +1473,29 @@ wmt_hero.prototype = {
     update: function () { Storage.update(this); },
     store: function () { Storage.store(this); }
 }
-
+/*Информация о навыке*/
+function wmt_perk(code, name, desc){
+	this.code = code;
+	this.name = name;
+	this.desc = desc;
+}
+wmt_perk.prototype = {
+	/*Код*/
+	code: undefined,
+	/*Название*/	
+	name: undefined,
+	/*Описание*/
+	desc: undefined,
+	getStorageKey: function(){
+		return 'wmt_perk_' + this.code;
+	},
+	update: function(){
+		Storage.update(this);
+	},
+	store: function() {
+		Storage.store(this)
+	}
+}
 
 
 /*Шкала уровней гильдии*/
@@ -1352,7 +1631,7 @@ wmt_page.getHour = function () {
         }
     }
 }
-wmt_page.update = function (sourceMenuTable) {
+wmt_page.update = function () {
     window.addEventListener('focus', function () { wmt_page.isBlur = false; });
     window.addEventListener('blur', function () { wmt_page.isBlur = true; });
     window.addEventListener('keypress', function (e) { /*alert(Debug_GetObjectValuesString(e));*/
@@ -1365,6 +1644,7 @@ wmt_page.update = function (sourceMenuTable) {
         wmt_page.playerId = match[1];
     };
 
+    var sourceMenuTable = document.querySelector('body>table');
     if (!sourceMenuTable) {
         return;
     }
@@ -1478,6 +1758,43 @@ wmt_page.update = function (sourceMenuTable) {
     }
 };
 
+/*Предметы аукциона с категориями*/
+function wmt_auc_items (){}
+wmt_auc_items.prototype = {
+	/*Все предметы по категориям*/
+	all: undefined,
+	/*Количество предметов*/
+	count: undefined,
+	/*Время последнего обновления*/
+	lastUpdate: undefined,
+	/*Требуется обновление*/
+	needUpdate: function(len){
+		return len && (len != this.count
+			|| !this.lastUpdate
+			|| (getCurrentTime() - this.lastUpdate) > 432E5);
+	},
+	/*Возврашает категорию предмета по его ID*/
+	getCategory: function(id){		
+		for (var category in this.all){
+			for (var ii = 0; ii < this.all[category].length; ii++){
+				if (this.all[category][ii] == id){
+					return category;
+				}
+			}
+		}
+	},	
+	getStorageKey: function() {
+		return 'wmt_auc_items';
+	},
+	update: function(){
+		Storage.update(this)
+	},
+	store: function() {
+		Storage.store(this);
+	},
+}
+
+
 /*Очередь запросов к серверу*/
 function RequestQueye() {
     /*Идентификатор очереди для блокировок*/
@@ -1536,6 +1853,104 @@ RequestQueye.prototype.Work = function () {
     }
     var closureThis = this;
     setTimeout(function () { closureThis.ReleaseLock(); }, delay);
+}
+
+function createMercenaryAutopilot(url, text) {
+	if (!text) text = 'Переход через';
+	var robot = new wmt_automate('Автопилот', text, 5000,
+	 function() { location.assign(url); })
+	 robot.switcher.input.checked = OwnInfo.Mercenary.Autopilot;
+	 robot.switcher.input.addEventListener('change', function() {
+	 	OwnInfo.update();
+		OwnInfo.Mercenary.Autopilot = this.checked;
+		OwnInfo.store();
+		if (this.checked) {
+			robot.start();
+		}
+	 });
+	return robot;
+}
+
+//Робот - выполняет автоматическое действие с задержкой и возможностью приостановки. Обладает собственным выключателем.
+function wmt_automate(switcherText, countdownText, delay, action) {
+	var t = this;
+	t.delay = delay;
+	t.action = action;
+	t.switcher = createCheckBoxWithText(switcherText);
+	t.switcher.style.verticalAlign = 'middle';
+	
+	t.countdownSpan = createElement('span');
+	t.countdownSpan.style.verticalAlign = 'middle';
+	t.countdownSpan.style.display = 'none';
+	t.countdownSpan.appendChild(createTextNode(countdownText));
+	t.countdownTimeRemainB = createElement('b');
+	t.countdownTimeRemainB.style.margin = "0px 4px";
+	t.countdownSpan.appendChild(t.countdownTimeRemainB);
+	t.countdownSpan.appendChild(createTextNode(' сек.'));
+	
+	t.countdownCancelButton = createElement('input');
+	t.countdownCancelButton.style.verticalAlign = 'middle';
+	t.countdownCancelButton.style.display = 'none';
+	t.countdownCancelButton.type = 'button';
+	t.countdownCancelButton.value = 'Отмена';
+	t.countdownCancelButton.addEventListener('click', function() { t.stop()	});
+		
+	t.root = createElement('div');
+	t.root.appendChild(t.switcher);
+	t.root.appendChild(t.countdownSpan);
+	t.root.appendChild(t.countdownCancelButton);
+}
+wmt_automate.prototype = {
+	startTime: undefined,
+	delay: undefined,
+	root: undefined,
+	switcher: undefined,
+	countdownSpan: undefined,
+	countdownTimeRemainB: undefined,
+	countdownCancelButton: undefined,	
+	action: undefined,	
+	canStart: undefined,
+	_hideElem: function(el) {
+		if (el) {
+			el.style.display = 'none';
+		}
+	},
+	_showElem: function(el) {
+		if (el) {
+			el.style.display = '';
+		}
+	},
+	start: function() {
+		if (!this.canStart) {
+			return;
+		}
+		this.startTime = getCurrentTime();
+		this._hideElem(this.switcher);
+		this._showElem(this.countdownSpan);
+		this._showElem(this.countdownCancelButton);		
+		this.countdown(); 
+	},
+	countdownId: undefined,
+	countdown: function() {
+		var t = this;
+		let tr  = Math.floor((t.delay - (getCurrentTime() - t.startTime)) / 1000);
+		t.countdownTimeRemainB.innerHTML = tr;
+		if (tr > 0) {
+			t.countdownId = setTimeout(function(){ t.countdown() }, 500);			
+		} 
+		else {			
+			if (t.action) {
+				t.action();
+			}
+			t.stop();		
+		}
+	},
+	stop: function() {
+		clearTimeout(this.countdownId);		
+		this._hideElem(this.countdownSpan);
+		this._hideElem(this.countdownCancelButton);
+		this._showElem(this.switcher);		
+	}
 }
 
 /*Звуковые эффекты*/
@@ -1759,6 +2174,32 @@ function createTextNode(data) {
     return document.createTextNode(data);
 }
 
+function createInputWithText(inputType, spanText, inputBeforeSpan) {
+	var input = createElement('input');
+	input.type = inputType;
+	input.style.verticalAlign = 'middle';
+	var span = createElement('span');
+	span.style.verticalAlign = 'middle';
+	span.innerHTML = spanText;
+	var label = createElement('label');
+	label.input = input;
+	label.span = span;
+	label.style.whiteSpace = 'nowrap';
+	label.appendChild(span);
+	if (inputBeforeSpan) {
+		label.insertBefore(input, span);
+	}
+	else {
+		label.appendChild(input);
+	}
+	return label;
+}
+
+function createCheckBoxWithText(text) {
+	return createInputWithText('checkbox', text, false);
+}
+
+
 /*GM_addStyle*/
 function addStyle(style) {
     GM_addStyle(style);
@@ -1774,6 +2215,49 @@ function log(message) {
     }
     GM_log(message);
 }
+
+/*Возвращает ссылку для покупки предмета на рынке*/
+function getArtAucHref(artId, category){	
+	return '/auction.php?cat=' + category + '&sort=204&type=0&art_type=' + artId;
+}
+
+/*Возвращает прочность предмета ( текущую и максимальную) записанную во всплывающей подсказке*/
+function getItemDurability (rootNode) {
+    var im = rootNode.querySelector('img[title*="Прочность"]');
+    if (im) {
+        var m = /(\d+)\/(\d+)/.exec(im.title);
+        if (m) {
+            return { cur: +m[1], max: +m[2] };
+        }
+    }
+}
+
+/*Вырезает из текстового представления указанного узла первое число, с запятой в качестве разделителя разрядов*/
+function getNumber (rootNode) {
+    var m = /[\d,]+/.exec(rootNode.textContent);
+    if (m) {
+        return +(m[0].replace(/,/g, ''))
+    };
+}
+
+/*Возвращает модифицированную строку модификаторов в названии предмета*/
+function getItemModReplacement(m) {
+    var reg = /[EWAFIN](\d+)/g;
+    var mods = [];
+    var count = 0;
+    var mm;
+    while ((mm = reg.exec(m)) != null) {
+        mods.push(mm[0]);
+        count += (+mm[1]);
+    }
+    if (mods.length > 0) {
+        return '<b>M' + count + '</b><span><em>' + mods.join('</em><em>') + '</em></span>';
+    }
+    else {
+        return m;
+    }
+}
+
 
 /*Возвращает дочерний для node swf объект, параметр movie которого содержит movieValueFragment*/
 function getFlashObjectByMovie(movieValueFragment, node) {
@@ -1946,6 +2430,194 @@ function setupSiteMainPage() {
     });
 }
 
+/*Обновление чата. Эта функция выполняется в глобальном контексте - все другие функции этого скрипта тут недоступны!*/
+function wmt_updatechatlines(l) {
+	LastUpdate = l;
+	if (!top.frames.chat || !top.frames.chatwindow) return;
+	var chatbox = top.frames.chatwindow.document.getElementById("chatbox");
+	if (!chatbox) return;
+	var a = top.frames.chat.document.getElementById("inbox").innerHTML.split("[explode_line]");
+	if (a.length > 0) {
+		for (var i=0; i < a.length; i++) {
+			if (a[i]!="" && a[i] !="\n" && a[i].length > 5) {
+				ChatLines[LinesCounter]= '<span class="wmt-chat-option">&#8230;</span>' + a[i];
+				LinesCounter=LinesCounter+1;
+			}
+		}
+		if (LinesCounter > LinesLimit) {
+			NewCounter = 0; 
+			NewChatLines = [];
+			for (var i=(LinesCounter-LinesLimit); i<LinesCounter; i++) {
+				NewChatLines[NewCounter] = ChatLines[i];
+				NewCounter++;
+			}
+			LinesCounter = NewCounter;
+			ChatLines = NewChatLines;
+		}		
+		
+		var ch_html =  '<style>.wmt-chat-helper { display: none; position: absolute; }'
+            + '.wmt-chat-helper>span { border-radius: 0.5em; text-align: center; display: inline-block; width: 1.5em; height: 1.5em; cursor: pointer; border: 1px solid black; padding 0.2em; margin: 0.1em; }'
+            + '.wmt-chat-helper>span:first-child { background: white; }'
+            + '.wmt-chat-row { display: block; margin: 1px; }'
+            + '.wmt-chat-row.hidden { opacity: 0.1; }'
+            + '.wmt-chat-row.hidden:hover { opacity: 1; }'
+            + '.wmt-chat-option { cursor: pointer; margin-right: 0.3em; }</style>';
+		for (var ii = ChatLines.length - 1; ii >= 0; ii--) {
+			ch_html += '<div class="wmt-chat-row">' + ChatLines[ii] + '</div>';
+		}
+								
+		chatbox.innerHTML= ch_html;		
+
+		var helper = document.createElement('div');
+		helper.className = 'wmt-chat-helper';
+		
+		var openInfo = document.createElement('span');
+		openInfo.title = 'Открыть страницу персонажа';
+		openInfo.innerHTML = '&#10067;';
+		openInfo.addEventListener('click', function () {		    
+			var win = window.open('http://www.heroeswm.ru/pl_info.php?nick=' + helper.row.author, '_blank');
+  			win.focus();
+			//top.frames.main.location.assign('http://www.heroeswm.ru/pl_info.php?nick=' + helper.row.author);
+		});
+		helper.appendChild(openInfo);
+		
+		var delLine = document.createElement('span');
+		delLine.title = 'Игнорировать это сообщение';
+		delLine.innerHTML = '&#10060;';
+		delLine.style = 'color: red; background: yellow;'
+		delLine.addEventListener('click', function() {
+			helper.style.display = 'none';
+			var isIn;
+			for (var ii = 0; ii < wmt_hidden_list.length; ii++) {
+				if (wmt_hidden_list[ii] == helper.row.msg_id) {
+					wmt_hidden_list[ii] = undefined;
+					helper.row.className = 'wmt-chat-row';
+					isIn = true;					
+					break;
+				}
+			}
+			if (!isIn) {
+				wmt_hidden_list.push(helper.row.msg_id);
+				helper.row.className += ' hidden';
+			}
+			
+		})
+		helper.appendChild(delLine);
+		var delAuthor = document.createElement('span');
+		delAuthor.title = 'Игнорировать все сообщения этого персонажа';
+		delAuthor.innerHTML = '&#10062;';
+		delAuthor.style = 'color: white; background: black;'
+		delAuthor.addEventListener('click', function() {
+			helper.style.display = 'none';			
+			var isIn;			 
+			for (var ii = 0; ii < wmt_black_list.length; ii++) {
+				if (wmt_black_list[ii] === helper.row.author) {
+					isIn = true;				
+					wmt_black_list[ii] = '';					
+					break;
+				}
+			}
+			if (!isIn) {
+				wmt_black_list.push(helper.row.author);							
+			}
+			setCookie('wmtbl', wmt_black_list.join('|'), { expires: 100000 });
+			
+			var cb = helper.row.parentNode;
+			for (var ii = 0; ii < cb.childNodes.length; ii++) {
+				var row = cb.childNodes[ii];
+				if (row.author === helper.row.author) {
+					row.className = 'wmt-chat-row' + (isIn ? '' : ' hidden');
+				}
+			}		
+		});		
+		helper.appendChild(delAuthor);		
+		chatbox.appendChild(helper);
+		
+		var wmt_time = chatbox.querySelectorAll('span.time');
+		for (var ii = 0; ii < wmt_time.length; ii++) {
+			var row = wmt_time[ii].parentNode; 
+			row.author = wmt_time[ii].nextSibling.nextSibling.textContent;
+		    row.msg_id = wmt_time[ii].firstChild.nextSibling.title;
+			var option = row.querySelector('.wmt-chat-option');
+			if (option) {
+				option.addEventListener('click', function() {
+					if (helper.style.display != 'inline-block'
+					 || !helper.row || helper.row.msg_id != this.parentNode.msg_id) {
+					 	helper.row = this.parentNode;
+						helper.style.display = 'inline-block';												
+						helper.style.top = this.offsetTop;
+						helper.style.left = this.offsetWidth;
+					}
+					else {
+						helper.style.display = 'none';
+					}
+				 });	
+			}
+			if (wmt_isInArray(wmt_black_list, row.author) || wmt_isInArray(wmt_hidden_list, row.msg_id)) {
+				row.className += ' hidden';
+			}
+			
+		}
+    }
+}
+
+/*Получает куку по имени*/
+function getCookie(name) {
+    var matches = document.cookie.match(new RegExp(
+        "(?:^|; )" + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"
+    ));
+    return matches ? decodeURIComponent(matches[1]) : undefined;
+}
+
+/*Задает куку*/
+function setCookie(name, value, options) {
+    options = options || {};
+
+    var expires = options.expires;
+
+    if (typeof expires == "number" && expires) {
+        var d = new Date();
+        d.setTime(d.getTime() + expires * 1000);
+        expires = options.expires = d;
+    }
+    if (expires && expires.toUTCString) {
+        options.expires = expires.toUTCString();
+    }
+
+    value = encodeURIComponent(value);
+
+    var updatedCookie = name + "=" + value;
+
+    for (var propName in options) {
+        updatedCookie += "; " + propName;
+        var propValue = options[propName];
+        if (propValue !== true) {
+            updatedCookie += "=" + propValue;
+        }
+    }
+
+    document.cookie = updatedCookie;
+}
+
+/*Настройка фрейма чата*/
+function setupChat() {
+    var ignoreList = getCookie('wmtbl');
+    if (ignoreList) {
+        ignoreList = JSON.stringify(ignoreList.split('|'));
+    }
+    else {
+        ignoreList = '[]';
+    }
+
+    var script = createElement('script');
+    script.innerHTML = 'var wmt_hidden_list = [];\r\n var wmt_black_list = '+ ignoreList +
+    ';\r\n function wmt_isInArray(array, value) { for (var ii = 0; ii < array.length; ii++) {\
+    if (array[ii] === value) return true; }};\r\n' + wmt_updatechatlines.toString() + ';\r\n' + setCookie.toString() + ';\r\n';
+    
+	document.body.appendChild(script);
+	window.eval('updatechatlines = wmt_updatechatlines;');	
+}
+
 /*Add some chars "c" to the begin of string representative of value "v", if it length less than "l"*/
 function padLeft(v, l, c) {
     if (v != undefined && l > 0 && c != undefined) {
@@ -1975,18 +2647,13 @@ function getMenuItems() {
         Title: '\uD83C\uDFE0', Href: 'home.php',
         Items: [
             { Title: wmt_page.nickName, Href: 'pl_info.php?id=' + wmt_page.playerId },
-            { Title: '\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438', Href: 'pers_settings.php' },
-            { Title: '\u0417\u0430\u043C\u043E\u043A', Href: 'castle.php' },
-            { Title: '\u041A\u0443\u0437\u043D\u044F', Href: 'mod_workbench.php' },
-            { Title: '\u041D\u0430\u0432\u044B\u043A\u0438', Href: 'skillwheel.php' },
-            { Title: '\u041F\u0440\u043E\u0442\u043E\u043A\u043E\u043B\u00A0\u043F\u0435\u0440\u0435\u0434\u0430\u0447', Href: 'pl_transfers.php?id=' + wmt_page.playerId },
-            { Title: '\u041D\u0430\u0431\u043E\u0440\u00A0\u0430\u0440\u043C\u0438\u0438', Href: 'army.php' },
+            { Title: '\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438', Href: 'pers_settings.php' },            
+            { Title: '\u041A\u0443\u0437\u043D\u044F', Href: 'mod_workbench.php' },                   
             { Title: '\u041F\u043E\u0447\u0442\u0430', Href: 'sms.php' },
-            { Title: '\u0420\u0435\u0439\u0442\u0438\u043D\u0433', Href: 'plstats.php' },
-            { Title: '\u041F\u0435\u0440\u0435\u0434\u0430\u0447\u0430\u00A0\u0440\u0435\u0441\u0443\u0440\u0441\u043E\u0432', Href: 'transfer.php' }
+            { Title: '\u0420\u0435\u0439\u0442\u0438\u043D\u0433', Href: 'plstats.php' }            
         ]
     });
-    /*map*/
+	/*map*/
     result.push({
         Title: '\uD83C\uDF0F', Href: 'map.php?st=sh', Items: [
                 { Title: '\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430', Href: 'map.php?st=fc' },
@@ -1998,36 +2665,67 @@ function getMenuItems() {
                 { Title: 'Toggle map', Action: toggleMap },
                 { Title: 'ShowTextMap', Action: showTextMap }
         ]
-    });
+    });	
+	/*Castle*/
+	result.push({
+		Title: '\uD83C\uDFF0', Href: 'castle.php', Items: [
+			{ Title: '\u0410\u0440\u0442\u0435\u0444\u0430\u043A\u0442\u044B\u00A0\u0441\u0443\u0449\u0435\u0441\u0442\u0432', Href: 'arts_for_monsters.php' }
+		]
+	});
+	/*Skills*/
+	result.push({
+		Title: '\u229B', Href: 'skillwheel.php', Items: [] 
+	});
+	/*Army*/
+	result.push({
+		Title: '\uD83D\uDC6A', Href: 'army.php', Items: [		
+		]
+	});
+	/*Inventory*/
+	result.push({
+            Title: '\uD83D\uDC5A', Href: 'inventory.php', Items: [                    
+            //Add inventory sets links
+            ]
+        });
+	/*transfer*/
+	result.push({
+		Title: '\u2696', Href: 'pl_transfers.php?id=' + wmt_page.playerId ,
+		Items: [
+			{ Title: '\u21D2\u00A0\u0420\u0435\u0441\u0443\u0440\u0441\u044B', Href: 'transfer.php' },
+			{ Title: '\u21D2\u00A0\u042D\u043B\u0435\u043C\u0435\u043D\u0442\u044B', Href: 'el_transfer.php' },
+		]
+	});    
     /*battles*/
     result.push({
-        Title: '\u2009\u2694\u2009', Href: 'bselect.php', Items: [
-            { Title: '\u041F\u0440\u043E\u0442\u043E\u043A\u043E\u043B\u00A0\u0431\u043E\u0435\u0432', Href: 'pl_warlog.php?id=' + wmt_page.playerId },
+        Title: '\u2694', Href: 'pl_warlog.php?id=' + wmt_page.playerId, Items: [
+            { Title: '\u0412\u0441\u0435\u00A0\u0431\u043E\u0438', Href: 'bselect.php' },
             { Title: '\u0422\u0443\u0440\u043D\u0438\u0440\u044B', Href: 'tournaments.php' },
             { Title: '\u0413\u0438\u043B\u044C\u0434\u0438\u044F\u00A0\u0442\u0430\u043A\u0442\u0438\u043A\u043E\u0432', Href: 'pvp_guild.php' }
         ]
     });
-    if (!wmt_page.inBattle) {
-        result.push({
-            Title: '\uD83D\uDC5A', Href: 'inventory.php', Items: [
-                    { Title: '\u041C\u0430\u0433\u0430\u0437\u0438\u043D\u00A0\u0430\u0440\u0442\u0435\u0444\u0430\u043A\u0442\u043E\u0432', Href: 'shop.php' },
-                    { Title: '\u0410\u0440\u0442\u0435\u0444\u0430\u043A\u0442\u044B\u00A0\u0441\u0443\u0449\u0435\u0441\u0442\u0432', Href: 'arts_for_monsters.php' }
-            ]
-        });
-        result.push({
-            Title: '\uD83D\uDC5C', Href: 'auction.php', Items: [
-                    { Title: '\u0412\u044B\u0441\u0442\u0430\u0432\u0438\u0442\u044C\u00A0\u043B\u043E\u0442', Href: 'auction_new_lot.php' },
-                    { Title: '\u0412\u0430\u0448\u0438\u00A0\u0442\u043E\u0432\u0430\u0440\u044B', Href: 'auction.php?cat=my&sort=0' }
-            ]
-        });
-        result.push({
-            Title: '\uD83C\uDF7B', Href: 'tavern.php', Items: [
-                { Title: '\u041F\u0440\u043E\u0442\u043E\u043A\u043E\u043B\u00A0\u0438\u0433\u0440', Href: 'pl_cardlog.php?id=' + +wmt_page.playerId },
-                { Title: 'roulette', Href: 'roulette.php' },
-                { Title: '2048', Href: '2048.html' }
-            ]
-        });
-    }
+	/*Shop*/
+	result.push({
+		Title: '\uD83C\uDFEA', Href: 'shop.php',
+		Items: [			
+		]
+	});
+	/*Market*/
+    result.push({
+		//\uD83D\uDC5C - one bag
+        Title: '\uD83C\uDFEC', Href: 'auction.php', Items: [
+                { Title: '\u0412\u044B\u0441\u0442\u0430\u0432\u0438\u0442\u044C\u00A0\u043B\u043E\u0442', Href: 'auction_new_lot.php' },
+                { Title: '\u0412\u0430\u0448\u0438\u00A0\u0442\u043E\u0432\u0430\u0440\u044B', Href: 'auction.php?cat=my&sort=0' }
+        ]
+    });
+	/*Small games*/
+    result.push({
+        Title: '\uD83C\uDF7B', Href: 'tavern.php', Items: [
+            { Title: '\u041F\u0440\u043E\u0442\u043E\u043A\u043E\u043B\u00A0\u0438\u0433\u0440', Href: 'pl_cardlog.php?id=' + +wmt_page.playerId },
+            { Title: 'roulette', Href: 'roulette.php' },
+            { Title: '2048', Href: '2048.html' }
+        ]
+    });
+	/*Forum*/
     result.push({
         Title: '\uD83D\uDCAC', Href: 'forum.php', Items: [
                 { Title: 'Новости', Href: 'forum_thread.php?id=1' },
@@ -2037,6 +2735,7 @@ function getMenuItems() {
                 { Title: '\u0427\u0430\u0442', Href: 'frames.php' }
         ]
     });
+	/*Help*/
     result.push({
         Title: '\u2754', Href: 'help.php', Items: [
             { Title: '\u041D\u0435\u043E\u0444\u0438\u0446\u0438\u0430\u043B\u044C\u043D\u0430\u044F\u00A0\u0441\u043F\u0440\u0430\u0432\u043A\u0430', Href: 'http://help.ordenmira.ru' },
@@ -2103,30 +2802,30 @@ function getCurrentTime() {
 }
 
 /*Заменяет оригинальное меню*/
-function showCustomMainMenu(sourceMenuTable) {
-    addStyle('.head { text-align: center; border-bottom-width: thin; border-bottom-style: inset; border-top-width: thin; border-top-style: inset; padding-top: 3px; padding-bottom: 3px; position: relative; z-index: 100; }\
-.inbattle { background: tomato; }\
-.time { float: right;  margin-right: 10px; font-weight: bold; font-size: 14px; }\
-.resources { display: block; text-align: center; }\
-.resources img { margin: 2px; }\
-.resources td { vertical-align: middle; }\
+function insertCustomMainMenu() {
+    addStyle('.wmt-head { display: inline-block; margin-left: 3em; width: 97%; }\
+.wmt-time { float: right;  margin-right: 10px; font-weight: bold; font-size: 14px; }\
+.wmt-resources { display: block;  }\
+.wmt-resources img { margin: 2px; }\
+.wmt-resources td { vertical-align: middle; }\
 .radio { float: right; margin-right: 10px; }\
 .radio img { height: 12px; width: 12px; }\
 .notify { float: right; margin: 2px; margin-right: 5px; padding: 3px; background: yellow; border: solid 1px; border-radius: 8px; }\
 .notify img { height: 16px; width: 16px; vertical-align: middle; }\
 .gray { background: lightgray; }\
 .hidden { display: none; }\
-div.menu{}\
-div.menuitem { display: inline-block; position: relative; margin: 1px; font-size: x-large; /*color: darkgray;*/ }\
+.wmt-menu { position: fixed; width: 3em; } .inbattle { background-color: tomato; }\
+div.menuitem { display: block; position: relative; margin: 1px; font-size: x-large; text-align: center; }\
 div.menuitem div.title{ position: relative;	left: 0; top: 0; color: darkgray; }\
 div.menuitem a { font-size: inherit; margin-right: 5px; margin-top: 2px; background: inherit; display: inline-block; text-decoration: none; }\
 div.menuitem a:hover { color: blue; }\
-div.menuitem div.items { padding: 3px; text-align: left; overflow: hidden; height: 1px; position: absolute; left: 0; top: 0;\
-transition: top 10s linear;}\
-div.menuitem:hover div.items { height: inherit; transform: translateY(1.3em); background: lightgray; }\
+div.menuitem div.items { padding: 3px; text-align: left; overflow: hidden; height: 0; width: 0; position: absolute; left: 0.9em; top: -1em;\
+transition: left 10s linear;}\
+div.menuitem:hover div.items { height: inherit; width: inherit; transform: translateY(1.3em); background: lightgray; }\
 head .timer-panel { float: left; }');
 
     var createMenuItem = function (item) {
+
         var menuItem = createElement('div', 'menuitem');
 
         if (item.Items && item.Items.length > 0) {
@@ -2162,7 +2861,10 @@ head .timer-panel { float: left; }');
     }
 
     var createMenu = function () {
-        var menu = createElement('div', 'menu');
+        var menu = createElement('div', 'wmt-menu');
+        if (wmt_page.inBattle) {
+            menu.className += ' inbattle';
+        }
         var menuItems = getMenuItems();
         for (var ii = 0; ii < menuItems.length; ii++) {
             menu.appendChild(createMenuItem(menuItems[ii]));
@@ -2213,7 +2915,7 @@ head .timer-panel { float: left; }');
         var hd = 0;
         var ts = ':';
 
-        var el = createElement('time', 'time');
+        var el = createElement('span', 'wmt-time');
         el.title = 'Время сервера';        
         if (wmt_page.time) {
             hd = +wmt_page.time.split(ts)[0] - new Date().getHours();
@@ -2243,83 +2945,11 @@ head .timer-panel { float: left; }');
     }
 
     var createHead = function () {
-        var head = createElement('div', 'head');
-        var menu = createMenu();
-        if (wmt_page.inBattle) {
-            menu.className += ' inbattle';
-            menu.addEventListener('keydown', function () { location.assign('home.php'); })
-        }
-        head.appendChild(menu);
+        var head = createElement('div', 'wmt-head');
+        
 
         if (wmt_page.time) {
             head.appendChild(createServerTime());
-        }
-
-        if (Settings.showTimersAmongMenu) {
-            var tp = createElement('div', 'wmt-timer-panel');
-            (function () { for (var ii = 0; ii < arguments.length; ii++) { arguments[ii].appendTo(tp); } })
-            (Timer.getWork(), Timer.getHunt(), Timer.getMercenary(), Timer.getThief(), Timer.getMovement(), Timer.getHP(), Timer.getMana(), Timer.getOwn(), Timer.getOwn2());
-    
-
-            var ao = createElement('span', 'wmt-tmr-ao');
-            ao.innerHTML = '\u2795';
-            ao.title = 'Добавить таймер';
-            ao.addEventListener('click', function () {
-                if (!Timer.getOwn().isRunning()) {
-                    Timer.getOwn().promptInterval();
-                }
-                else if (!Timer.getOwn2().isRunning()) {
-                    Timer.getOwn2().promptInterval();
-                }
-            });
-           
-            var eb = createElement('div', 'wmt-tmr-eb');
-            eb.appendChild(createTextNode('\u25B2'));
-            eb.onclick = function () {
-                if (Settings.timersCollapsed) {
-                    expandTimers();
-                }
-                else {
-                    collapseTimers();
-                }
-                Settings.timersCollapsed = !Settings.timersCollapsed;
-                Settings.store();
-
-                if (eb.collapsed) {
-                    
-                }
-                else {
-                    
-                }
-                eb.collapsed = !eb.collapsed;
-            };
-            var td = createElement('div', 'wmt-tmr-td');
-            td.appendChild(ao);
-            td.appendChild(eb);                  
-            tp.appendChild(td);                
-            head.appendChild(tp);
-            var expandTimers = function () {
-                ao.style.display = '';
-                tp.style = '';
-                tp.appendChild(td);
-                eb.innerHTML = '\u25B2';
-            }
-            var collapseTimers = function () {
-                ao.style.display = 'none';
-                tp.style = 'height: 1.5em; width: 3em;';
-                tp.insertBefore(td, tp.firstChild);
-                eb.innerHTML = '\uD83D\uDD3D';
-            }
-            var updateTimerPanel = function () {
-                if (Settings.timersCollapsed) {
-                    collapseTimers();
-                }
-                else {
-                    expandTimers();
-                }
-            }
-            updateTimerPanel();
-            setInterval(updateTimerPanel, 5000);            
         }
 
         if (wmt_page.notifiers) {
@@ -2329,7 +2959,7 @@ head .timer-panel { float: left; }');
         }
 
         if (wmt_page.havingResources) {
-            var rsc = createElement('table', 'resources');
+            var rsc = createElement('table', 'wmt-resources');
             var soleRow = createElement('row');
             soleRow.appendChild(createResourceItem(wmt_page.resources.gold, wmt_page.images.gold, 'gold', 'auction.php'));
             soleRow.appendChild(createResourceItem(wmt_page.resources.wood, wmt_page.images.wood, 'wood', 'auction.php?cat=res&sort=0&type=1'));
@@ -2343,11 +2973,25 @@ head .timer-panel { float: left; }');
             head.appendChild(rsc);
         }
 
+        if (Settings.showTimersAmongMenu) {
+            var tp = createElement('div', 'wmt-timer-panel');
+            (function () { for (var ii = 0; ii < arguments.length; ii++) { arguments[ii].appendTo(tp); } })
+            (Timer.getWork(), Timer.getHunt(), Timer.getMercenary(), Timer.getThief(), Timer.getMovement(), Timer.getHP(), Timer.getMana(), Timer.getOwn(), Timer.getOwn2());
+            head.appendChild(tp);
+        }
         return head;
     }
 
-    if (sourceMenuTable && sourceMenuTable.parentNode) {
-        sourceMenuTable.parentNode.insertBefore(createHead(), sourceMenuTable);
+    var fc = document.body.querySelector('center');
+    if (fc) {
+        fc.parentNode.insertBefore(createMenu(), fc);
+        fc.parentNode.insertBefore(createHead(), fc);
+        fc.style = 'margin-left: 3em; display: inline-block;';
+        
+    }
+
+    var sourceMenuTable = document.querySelector('body>table');
+    if (sourceMenuTable) {
         sourceMenuTable.parentNode.removeChild(sourceMenuTable);
     }
 }
@@ -2356,11 +3000,8 @@ head .timer-panel { float: left; }');
 function initializeCommonStyles() {
     /*Таймеры*/
     if (Settings.showTimersAmongMenu) {
-        addStyle('.wmt-timer-panel { position: fixed; top: 0px; left: 0px; background: linear-gradient(to right, #AF9F39, #FFFBCA); opacity: 0.8; border-bottom-right-radius: 15px; overflow: hidden; }\
-.wmt-tmr-td { font-size: larger; }\
-.wmt-tmr-eb { text-align: center;  cursor: pointer;  } .wmt-tmr-eb:hover { color: blue; }\
-.wmt-tmr-ao { float: left; cursor: pointer; margin-left: 10px;  } .wmt-tmr-ao:hover { color: blue; } \
-.wmt-timer-panel .wmt-guild-timer { display: block; }   .wmt-timer-panel .wmt-gt-time { color: #006400; }\
+        addStyle('.wmt-timer-panel {  }\
+.wmt-timer-panel .wmt-guild-timer { display: inline-block; }  .wmt-timer-panel .wmt-gt-time { color: #006400; }\
 .wmt-guild-timer { cursor:pointer; display: inline-block; padding: 3px; margin-right: 5px; }\
 .wmt-gt-title { margin-right: 5px; color: #455D63; font-size: x-large; display:inline-block; min-width: 1em; }\
 .wmt-gt-flicker-off { visibility: hidden; }\
@@ -2378,12 +3019,12 @@ function initializeCommonStyles() {
 .wmt-direct-move:hover { background: whitesmoke; }');
 
     //Текстовая карта
-    addStyle('.wmt-map-window { position: absolute; top: 10em; width: 100%; z-index: 101  }\
+    addStyle('.wmt-map-window {  }\
 .wmt-map-window>button { float: right; }\
-.wmt-map-table { border-collapse: collapse; width: 100%; }\
-.wmt-map-table tr { height: 3em; }\
+.wmt-map-table { border-collapse: collapse; border: 1px solid silver; width: 18rem; }\
+.wmt-map-table tr { height: 3rem; }\
 .wmt-map-table td { border-radius: 3px; text-align: center;  }\
-.wmt-map-empty-cell {  background: gray; }\
+.wmt-map-empty-cell {  background: #ddd9cd; }\
 .wmt-map-sector-cell { background: white; }\
 .wmt-map-view-link {  text-decoration: none; }\
 .wmt-map-move-link { padding-left: 0.5em; font-size: larger; text-decoration: none; }');
@@ -2394,22 +3035,34 @@ function toggleMap() {
     var newDisplay = Settings.hideMap ? '' : 'none';
     Settings.hideMap = !Settings.hideMap;
     Settings.store();
-    setMapObjectDisplay(newDisplay);
+    let mapObj = setMapObjectDisplay(newDisplay);
+    if (Settings.hideMap) {
+
+        mapObj.parentNode.appendChild(getTextMap());
+    }
 }
 
 /*Создает и показывает текстовую карту мира*/
 function showTextMap() {
+    document.body.appendChild(getTextMap());
+}
+
+function getTextMap() {
     var mapDiv = document.createElement('div');
     mapDiv.className = 'wmt-map-window';
-    var closeBtn = document.createElement('button');
+    /*var closeBtn = document.createElement('button');
     closeBtn.appendChild(document.createTextNode('X'));
     closeBtn.addEventListener('click', function () { document.body.removeChild(mapDiv) });
-    mapDiv.appendChild(closeBtn);
+    mapDiv.appendChild(closeBtn);*/
 
     var minSectorX = 50;
     var maxSectorX = 50;
     var minSectorY = 50;
     var maxSectorY = 50;
+
+    /*let mapSectorRadiuses = [];
+    Map.forEachConcentric({ sectorId: 26, handleSector: (d) => mapSectorRadiuses.push(d) });
+    let mapSectorRadusColors = ['green', 'lime', 'yellow', 'orange', 'red', 'brown'];*/
 
     for (var ii = 0; ii < Map.sectors.length; ii++) {
         var sect = Map.sectors[ii];
@@ -2430,6 +3083,15 @@ function showTextMap() {
     var columnCount = maxSectorX - minSectorX + 1;
     var rowCount = maxSectorY - minSectorY + 1;
 
+    let getSectorAbb = (name) => {
+        let words = name.split(' ');
+        let result = '';
+        for (let ii = 0; ii < words.length; ii++) {
+            result += words[ii][0].toUpperCase();
+        }
+        return result;
+    }
+
     var mapTable = document.createElement('table');
     mapTable.className = 'wmt-map-table';
     for (var rowIndex = minSectorY; rowIndex <= maxSectorY; rowIndex++) {
@@ -2443,9 +3105,20 @@ function showTextMap() {
                 sectorEl.className = 'wmt-map-view-link';
                 sectorEl.title = 'Обзор сектора ' + sector.name;
                 sectorEl.href = '/map.php?cx=' + sector.x + '&cy=' + sector.y;
-                sectorEl.innerHTML = sector.name + ' \uD83D\uDD0D';
+                sectorEl.innerHTML = /*'\uD83D\uDD0D' + */getSectorAbb(sector.name) ;
                 cell.appendChild(sectorEl);
                 insertMoveLink(sectorEl);
+
+                /*for (let ii = 0; ii < mapSectorRadiuses.length; ii++) {
+                    if (mapSectorRadiuses[ii].sector.x == sector.x
+                        && mapSectorRadiuses[ii].sector.y == sector.y) {
+                        if (mapSectorRadiuses[ii].radius < mapSectorRadusColors.length) {
+                            sectorEl.style = 'border-bottom: 5px solid '
+                                + mapSectorRadusColors[mapSectorRadiuses[ii].radius];
+                        }
+                        break;
+                    }
+                }*/
             }
             else {
                 cell.className = 'wmt-map-empty-cell';
@@ -2455,8 +3128,7 @@ function showTextMap() {
     }
 
     mapDiv.appendChild(mapTable);
-
-    document.body.appendChild(mapDiv);
+    return mapDiv;
 }
 
 /*Устанавливает свойству display элемента карты мира указанное значение */
@@ -2472,6 +3144,7 @@ function setMapObjectDisplay(value) {
             parent = parent.parentNode;
         }*/
     }
+    return mapObj;
 }
 
 /*Удаляет все таймауты и интервалы*/
@@ -2580,7 +3253,7 @@ function handleObjectInfoResponse(response) {
     if (response.status == "200" && response.readyState == 4) {
         var objId = getObjectId(response.finalUrl);
         if (objId) {
-            var xmlDoc = parseXmlDoc(response.responseText);
+            var xmlDoc = parseXmlDoc(response.responseText);			
             if (xmlDoc) {
                 wmt_ph.processObjectInfo(xmlDoc, objId);
                 var objInfo = new ObjectInfo(objId);
@@ -2589,6 +3262,15 @@ function handleObjectInfoResponse(response) {
             }
         }
     }
+}
+
+/*Создает ссылку на сектор */
+function createSectorNameLink(sector) {
+	var sectorLink = createElement('a');
+    sectorLink.appendChild(createTextNode(sector.name));
+    sectorLink.href = '/map.php?cx=' + sector.x + '&cy=' + sector.y;
+    sectorLink.title = 'Переместиться в сектор ' + sector.name + '. (Нужен транспорт со сложным маршрутом)';
+    return sectorLink;
 }
 
 /*Создает ссылку для перехода в указанный сектор*/
@@ -2623,7 +3305,7 @@ function insertMoveLink(mapLink) {
 
 /*Возвращает зарплату с учетом эффективности ГР и штрафа трудоголика*/
 function getRealSalary(salaryBase) {
-    return Math.floor((+salaryBase) * OwnInfo.WorkEfficiencyFactor * OwnInfo.WorkaholicPenaltyFactor);
+    return Math.floor((+salaryBase) * OwnInfo.WorkEfficiencyFactor * OwnInfo.WorkaholicPenaltyFactor * OwnInfo.workEfficiencyBonusFactor);
 }
 
 /*Возвращает время до конца смены в минутах*/
@@ -2671,6 +3353,13 @@ function createGoldImg() {
     return result;
 }
 
+function createCraftElementImg(elIndex) {
+	var result = createElement('img');
+	result.src = 'http://dcdn.heroeswm.ru/i/' + craft_elements[elIndex][1] + '.gif';
+	result.title = craft_elements[elIndex][0];
+    return result;
+}
+
 function getSeparatedValue(v) {
     if (v) {
         var res = '';
@@ -2710,7 +3399,9 @@ function getResourcesPrice(t) {
 function getTotalPrice(p) {
     var result = 0;
     for (var r in p) {
-        result += p[r] * getPriceMultiplier(r);
+		if (r) {
+			result += p[r] * getPriceMultiplier(r);	
+		}        
     }
     return result;
 }
@@ -2853,7 +3544,7 @@ function getWarDate(str) {
 }
 
 function getMonthName(monthNum) {
-    var monthNames = ["января", "февраля", "марта", "апреля", "мая", "июня",
+	var monthNames = ["января", "февраля", "марта", "апреля", "мая", "июня",
     "июля", "августа", "сентября", "октября", "ноября", "декабря"];
     var num = +monthNum;
     if (num && num > 0 && num <= monthNames.length) {
@@ -2904,6 +3595,21 @@ function getBattleResults(src) {
     if (src && (em = /\|\#f_en(Victorious:[^\|]+)\|/.exec(src)) != null) {
         return em[1];
     }
+}
+
+/*Возвращает результат проверки регулярки*/
+function getMatch(regExp, sourceString) {
+	if (sourceString && regExp) {
+		return regExp.exec(sourceString);
+	}
+}
+
+/*Возвращает первое полученное значение результата проверки регулярки*/
+function getNthMatch(regExp, sourceString, matchNum){
+	var m = getMatch(regExp, sourceString);
+	if (m) {
+		return m[matchNum];
+	}	
 }
 
 function wmt_ph(url, setup, process) {
@@ -3034,10 +3740,44 @@ wmt_ph.processHome = function (xmlDoc) {
     /*getFactionsAndGuildsInfo(document);*/
 }
 wmt_ph.setupMap = function () {
+    if (!Timer.getWork().isRunning() || Settings.autoSellResources) {
+        let startTime = getCurrentTime();
+        let autoRefreshDelay = 10000 + (10000 * Math.random());
+        let getTimeRemain = () => {
+            let timeLeft = getCurrentTime() - startTime;
+            if (timeLeft < autoRefreshDelay) {
+                return Math.floor((autoRefreshDelay - timeLeft)/ 1000);
+            }
+            else {
+                return 0;
+            }
+        }
+        addStyle('.wmt-auto-refresh-badge { position: fixed; bottom: 0px; right: 0px; font-size: large; }');
+
+        let autoRefreshBadge = createElement('span', 'wmt-auto-refresh-badge');
+        autoRefreshBadge.appendChild(createTextNode('обновление через: '));
+        let autoRefreshTimeRemain = createElement('span');
+        autoRefreshTimeRemain.innerHTML = getTimeRemain();
+        autoRefreshBadge.appendChild(autoRefreshTimeRemain);
+        autoRefreshBadge.appendChild(createTextNode(' сек.'));
+        document.body.appendChild(autoRefreshBadge);
+        setInterval(() => {
+            let timeRemain = getTimeRemain();
+            autoRefreshTimeRemain.innerHTML = timeRemain;
+            if (timeRemain <= 0) {
+                location.reload();
+            }
+        }, 1000);
+
+    }
+    
     window.addEventListener('keypress', function (e) { if (e.keyCode == 112) toggleMap() });
 
     if (Settings.hideMap) {
-        setMapObjectDisplay('none');
+        let mapObj = setMapObjectDisplay('none');
+        if (mapObj) {
+            mapObj.parentNode.parentNode.parentNode.appendChild(getTextMap());
+        }
     }    
 
     if (Settings.hideHunt && Timer.getHunt().isRunning()) {
@@ -3054,6 +3794,136 @@ wmt_ph.setupMap = function () {
         
     }
     else {
+		var mapParam = getFlashObjectVars(getFlashObjectByMovie('map.swf'));
+		var firstParam = mapParam[0].split(':');
+		var currentSectorId = parseInt(firstParam[0].split('*')[2]);
+		//mission undefined 0; accept required: -1;
+		var mercenaryTargetSectorId = parseInt(firstParam[13]);
+		var sectorLink = document.querySelector('b>a[href*="map.php"]'); 
+		
+		/*Ссылка на перемещение в сектор*/		
+        insertMoveLink(sectorLink);
+		
+		var autopilotActionText = 'Переход через';
+		var autopilotUrl;
+		var autopilotParent;
+		
+		/*Авто доставка груза / вход в бой*/
+		var confirmLink = document.querySelector('a[href*="map.php?action=accept_merc_task"]');
+		if (confirmLink) {
+			autopilotUrl = confirmLink.href;
+			autopilotParent = confirmLink.parentNode;
+		}
+		
+		/*Ссылка на переход в сектор ГН*/
+		if (mercenaryTargetSectorId != 0 
+			&& mercenaryTargetSectorId != currentSectorId 
+			&& OwnInfo.PremiumEnabled) {
+			addStyle('.wmt-map-merc { display: inline-block; width: 80%; background: white; border: 1px solid black; margin-top: 1em; padding-bottom: 1em; }\
+	.wmt-map-merc>span:first-child { font-weight: bold; display: block; margin-bottom: 1em; } ');
+			var mercHead = createElement('span');
+			mercHead.innerHTML = 'Задание от';
+			var mercLink = createElement('a');
+			mercLink.href = '/mercenary_guild.php';
+			mercLink.innerHTML = 'Гильдии наемников';
+			mercHead.appendChild(mercLink);
+			
+			var mercDiv = createElement('div', 'wmt-map-merc');
+			mercDiv.appendChild(mercHead);
+			
+			if (OwnInfo.Mercenary.Task) {
+				var taskB = createElement('b');
+				taskB.innerHTML = wmt_MT.toString(OwnInfo.Mercenary.Task); 
+				mercDiv.appendChild(taskB);
+				mercDiv.appendChild(createElement('br'));
+			}
+			
+			var targetSector;
+			if (mercenaryTargetSectorId == -1) {
+				targetSector = Map.getNearestSectorWithMercenaryPost(currentSectorId);
+			}
+			else {
+				targetSector = Map.getSectorById(mercenaryTargetSectorId);
+			}
+			mercDiv.appendChild(createTextNode('Двигайтесь в '));
+			var targetSectorLink = createSectorNameLink(targetSector);
+			mercDiv.appendChild(targetSectorLink);
+			insertMoveLink(targetSectorLink);
+			sectorLink.parentNode.parentNode.insertBefore(mercDiv, sectorLink.parentNode.nextSibling);
+			
+			
+			autopilotUrl = targetSectorLink.nextSibling.href;
+			autopilotParent = mercDiv;			
+		}
+		
+		/*Автосдача задания ГН*/
+		if (mercenaryTargetSectorId == -1 && Map.isMercenaryPostThere(currentSectorId)) {
+			autopilotActionText = 'Вход в гильдию через';
+			autopilotUrl = '/mercenary_guild.php';					
+		}
+		
+		var autopilot = createMercenaryAutopilot(autopilotUrl, autopilotActionText);
+		if (autopilotParent && autopilotUrl){
+			autopilotParent.appendChild(autopilot.root);
+			autopilot.canStart = true;			
+		}
+		
+		if (OwnInfo.Mercenary.Autopilot) {
+			var dressUrl = (mercenaryTargetSectorId == currentSectorId)
+		 		? ((confirmLink) ? null : '/inventory.php?all_on=1&r=1601350153694871552')
+				: '/inventory.php?all_off=100&r=8176700537022971904';  
+		
+			var handleDressInventory = function (r) {				
+				//set army here
+				/*If need to dress */
+				if (mercenaryTargetSectorId == currentSectorId) {
+					if (r.status == "200" && r.readyState == "4") {
+						var xDoc = parseXmlDoc(r.responseText);
+						var ap = xDoc.getElementById('ap');							
+						if (!ap || parseInt(ap.textContent) < 11) {
+							wmt_Sound.playSequence('C 400, P 100, F 300');
+							setTimeout(function(){
+								location.assign('/inventory.php');
+							}, 2000);
+						}
+						else {
+							if (Timer.getHP().isRunning()) {
+								setTimeout(function() { location.reload(); }, Timer.getHP().getLostTime().Ts * 1000);
+							}
+							else {
+								location.reload();	
+							}
+							
+							
+						}							
+					}					
+				}
+				else {
+					autopilot.start();	
+				}				
+			}
+			
+			if (dressUrl) {
+				GM_xmlhttpRequest({
+					method: 'get',
+					url: dressUrl,
+					onload: handleDressInventory,
+				});	
+			}
+			else {
+				autopilot.start();
+			}
+			
+			if (Timer.getHP().isRunning()) {				
+							
+			}			
+			else 
+			{
+				
+			}				
+		}
+		
+		
         //hunts 
         var huntSignals = document.querySelectorAll('td.wb[width="21"]>a[href*="plstats_hunters.php"]');
         if (huntSignals.length > 0) {
@@ -3194,8 +4064,9 @@ wmt_ph.setupMap = function () {
             }
         }
 
-        /*Ссылка на перемещение в сектор*/
-        insertMoveLink(document.querySelector('b>a[href*="map.php"]'));
+        
+		
+		
         var mot = 0;
         var motReg = new RegExp('mot_' + wmt_page.playerId + '=(\\d);');
         var motMatch = motReg.exec(document.cookie);
@@ -3316,6 +4187,7 @@ wmt_ph.setupMap = function () {
                     var updateBtn = createElement('div', 'wmt-update-object-button wmt-update-object-button-normal');
                     updateBtn.appendChild(updateSp);
                     updateBtn.objectInfo = objInfo;
+                    updateBtn.title = objInfo.Id;
                     updateBtn.addEventListener('click', function () {
                         this.objectInfo.Balance = undefined;
                         this.objectInfo.WorkShiftEnd = undefined;
@@ -3324,7 +4196,7 @@ wmt_ph.setupMap = function () {
                         updateObjectInfoRow(this.objectInfo);
                         this.className = 'wmt-update-object-button wmt-update-object-button-pressed';
                         GM_xmlhttpRequest({
-                            url: '/object-info.php?id=' + this.objectInfo.Id,
+                            url: '/object-info.php?id=' + this.objectInfo.id,
                             method: 'GET',
                             headers: {
                                 "Referer": location.href,
@@ -3333,6 +4205,7 @@ wmt_ph.setupMap = function () {
                             overrideMimeType: 'text/html;charset=windows-1251',
                             onload: handleObjectInfoResponse
                         });
+
                     });
 
                     var updateCell = row.insertCell();
@@ -3380,19 +4253,24 @@ wmt_ph.processMap = function (xmlDoc) {
 
     OwnInfo.store();
 }
-wmt_ph.setupObjectInfo = function () {
-    window.addEventListener('keypress', function (e) {
-        if (e.keyCode == 112) {
-            var selResCount = document.querySelector('form[action*="sell_res.php"]>nobr>input[name="count"]');
-            if (selResCount) {
-                selResCount.value = '1';
-                selResCount.parentNode.parentNode.submit();
-            }
-            else {
-                location.reload();
-            }
-        }
-    });
+wmt_ph.setupObjectInfo = function(){
+	window.addEventListener('keypress', function(e){
+		if (e.keyCode == 112) {
+			sellRes();
+			setTimeout(function(){
+				location.reload();
+			}, 500);			
+		}
+	});
+	
+	var sellRes = function(){
+		var selResCount = document.querySelector('form[action*="sell_res.php"]>nobr>input[name="count"]');
+		if (selResCount) {
+			selResCount.value = '10';
+			selResCount.parentNode.parentNode.submit();
+		}
+	}
+	
     var objectId = getObjectId(location.href);
     if (!objectId) {
         log('objectId undefined: ' + objectId);
@@ -3401,6 +4279,25 @@ wmt_ph.setupObjectInfo = function () {
 
     var objInfo = new ObjectInfo(objectId);
     objInfo.update();
+
+    let goldImg = document.querySelectorAll('img[src*="gold.gif"]');    
+    for (let imi = 0; imi < goldImg.length; imi++) {
+        if (!goldImg[imi].parentNode.nextSibling) {            
+            continue;
+        }
+        let salaryB = goldImg[imi].parentNode.nextSibling.firstChild;
+        if (salaryB && salaryB.textContent == objInfo.salary) {
+            let delta = getRealSalary(objInfo.salary) - objInfo.salary;
+            let deltaSpan = createElement('span');
+            deltaSpan.style.marginLeft = '0.2rem';
+            deltaSpan.style.fontWeight = 'normal';
+            deltaSpan.innerHTML =  delta == 0 ? '' : (delta > 0 ? '+' + delta : delta);
+            salaryB.appendChild(deltaSpan);
+        }
+        else {
+            
+        }
+    }
 
     /*Конфигурация объекта*/
     var objConfig = {
@@ -3462,12 +4359,18 @@ wmt_ph.setupObjectInfo = function () {
                 }
                 else {
                     objConfig.warnShift = objInfo.workShiftEnd;
+					wmt_Sound.beep(350, 0, 100);
                 }
                 objConfig.store();
                 updateBell();
             };
             if (objInfo.workShiftEnd) {
-                mapLink.parentNode.insertBefore(bell, mapLink.parentNode.lastChild);
+                if (OwnInfo.workEfficiencyBonusFactor > 1) {
+                    mapLink.parentNode.lastChild.lastChild.insertBefore(bell, mapLink.parentNode.lastChild.lastChild.lastChild);
+                }
+                else {
+                    mapLink.parentNode.insertBefore(bell, mapLink.parentNode.lastChild);
+                }
             }
             else {
                 mapLink.parentNode.appendChild(createTextNode('Окончание смены: --:--'));
@@ -3477,10 +4380,11 @@ wmt_ph.setupObjectInfo = function () {
                 var d;
                 if (objConfig.warnShift) {
                     if (objConfig.warnShift != objInfo.workShiftEnd) {
-                        bell.style.color = 'yellow';
-                        wmt_Sound.beep();
+                        bell.style.color = 'yellow';						
                         delete objConfig.warnShift;
                         objConfig.store();
+						wmt_Sound.beep();                        
+						setInterval(function() {wmt_Sound.beep()}, 1000);
                     }
                     else {
                         bell.style.color = 'red';
@@ -3567,10 +4471,8 @@ wmt_ph.setupObjectInfo = function () {
                 appendLastCodeElements(cell);
             }
         }
-    }
+    }	
     else if (OwnInfo.LastWork.Image) {
-
-
         var infoTable = createElement('table', 'wb');
         var headRow = infoTable.insertRow(0);
         var headCell = headRow.insertCell(0);
@@ -3601,9 +4503,13 @@ wmt_ph.setupObjectInfo = function () {
             //здесь вставить блок автоустройства до конца действия кода
         }
 
-
-        buyResForm.parentNode.insertBefore(infoTable, buyResForm.parentNode.firstChild);
+        buyResForm.parentNode.insertBefore(infoTable, buyResForm.parentNode.firstChild);		
     }
+	if (Timer.getWork().isRunning()){
+		//продаем рес
+		sellRes();
+			
+	}	
 }
 wmt_ph.processObjectInfo = function (xmlDoc, objectId) {
     if (!xmlDoc) {
@@ -3715,8 +4621,17 @@ wmt_ph.processObjectInfo = function (xmlDoc, objectId) {
         if (workaholicMatch) {
             workaholicPenaltyFactor = +workaholicMatch[1];
         }
-        if (OwnInfo.WorkaholicPenaltyFactor != workaholicPenaltyFactor) {
+
+        var efficiencyBonusFactor = 1;
+        var effM = /Летний бонус: \+(\d+)% к зарплате/.exec(headText);
+        if (effM) {            
+            efficiencyBonusFactor += parseInt(effM[1]) / 100;
+        }
+
+        if (OwnInfo.WorkaholicPenaltyFactor != workaholicPenaltyFactor
+            || OwnInfo.workEfficiencyBonusFactor != efficiencyBonusFactor) {
             OwnInfo.update();
+            OwnInfo.workEfficiencyBonusFactor = efficiencyBonusFactor;
             OwnInfo.WorkaholicPenaltyFactor = workaholicPenaltyFactor;
             OwnInfo.store();
         }
@@ -3785,30 +4700,21 @@ wmt_ph.processPlayerInfo = function (xmlDoc, href) {
 
     /*perks*/
     h.perks = undefined;
-    var app = xmlDoc.querySelectorAll('object[data*="swffiles/showperks.swf"]>param[name="FlashVars"]');
+    var app = xmlDoc.querySelectorAll('a[href*="showperkinfo.php?name="]');
     if (app.length) {
         h.perks = {};
-        var getPerks = function (p) {
-            var a = p.value.split('|');
-            var r = { branch: a[0].split('=')[1], items: [] };
-            for (var i = 2; i < a.length; i = i + 2) {
-                var c = a[i - 1], n = a[i];
-                if ((c.indexOf(r.branch) == 0)
-                    && (r.items.length > 0)
-                    && (r.items[r.items.length - 1].code.indexOf(r.branch) == 0)) {
-                    r.items[r.items.length - 1] = { code: c, name: n  };
-                }
-                else {
-                    r.items.push({ code: c, name: n });
-                }
-            }
-            return r;
-        }
+		var br = 'main';        
         for (var ii = 0; ii < app.length; ii++) {
-            var b = getPerks(app[ii]);
-            if (b) {
-                h.perks[b.branch] = b.items;
-            }
+			var c = app[ii].href.split('=')[1];
+			if (/\d$/.test(c))
+			{
+				br = c.substring(0, c.length - 1);				
+			}
+			if (!h.perks[br])
+			{
+				h.perks[br] = [];
+			}			
+            h.perks[br].push({ code: c, name: app[ii].firstChild.title })            
         }
     }
     h.store();
@@ -3818,7 +4724,7 @@ wmt_ph.setupPlayerInfo = function () {
     if (pid == undefined) {
         log('no player id ' + location.href);
         return;
-    }   
+    }       
     
 
     /*Hide family*/
@@ -3827,7 +4733,19 @@ wmt_ph.setupPlayerInfo = function () {
 
     var userName, m, mailLink = document.querySelector('td.wb a[href*="sms-create.php?mailto="]');
     if (mailLink && (m = /mailto=(.+)/.exec(mailLink.href)) != null) {
+        addStyle('.wmt-pi-tl { font-size: large; text-decoration: none; cursor: pointer; border: 1px solid black; padding: 0.1rem; margin: 0.2rem; border-radius: 0.3rem; }');
+        mailLink.className = 'wmt-pi-tl';
+        mailLink.innerHTML = "\u2709";
         userName = decodeCP1251(m[1]);
+    }
+
+    if (mailLink && userName) {
+
+        var transferLink = createElement('a', 'wmt-pi-tl');
+        transferLink.href = '/transfer.php#' + userName;
+        transferLink.title = 'Передать ресурсы';
+        transferLink.innerHTML = '\u2696';
+        mailLink.parentNode.insertBefore(transferLink, mailLink);
     }
     
     var itsMe = userName == wmt_page.nickName;
@@ -3895,10 +4813,16 @@ wmt_ph.setupPlayerInfo = function () {
             var bd = createElement('div', 'wmt-pli-bd');
 
             for (var ii = 0; ii < hero.perks[branch].length; ii++) {
+				
                 var pb = createElement('a');
                 pb.href = 'http://www.heroeswm.ru/showperkinfo.php?name=' + hero.perks[branch][ii].code;
                 pb.style.backgroundColor = pc[branch];
                 pb.innerHTML = hero.perks[branch][ii].name;
+				var perk = new wmt_perk(hero.perks[branch][ii].code);
+				perk.update();
+				if (perk.desc){
+					pb.title = perk.desc;
+				}
                 bd.appendChild(pb);
             }
 
@@ -3948,33 +4872,275 @@ wmt_ph.setupPlayerInfo = function () {
     showItemsCurrentDurability();
 }
 wmt_ph.setupMercenaryGuild = function () {
+	
+	var mainTable = document.querySelector('table.wbwhite');	
+	
+	var autopilot = createMercenaryAutopilot('/map.php');		
+	autopilot.root.style.float = 'right';
+	autopilot.canStart = false;
+	mainTable.rows[0].cells[1].firstChild.appendChild(autopilot.root);
+	
+	
+	/*Hide face*/
+	var face = getFlashObjectByMovie('mercenary.swf', mainTable);
+	if (face) {
+		face.parentNode.parentNode.style.display = 'none';
+	}
+		
+	/*Reward history*/
+	if (OwnInfo.Mercenary.Rewards && OwnInfo.Mercenary.Rewards.length > 0) {
+		addStyle('.wmt-merc-rh {  }\
+		.wmt-merc-rhl img { vertical-align: middle; height: 2em; width: 2em; margin-left: 0.5em; }\
+		.wmt-merc-rlts { font-weight: bold; vertical-align: middle; }\
+		.wmt-merc-gs { color: goldenrod; vertical-align: middle; display: inline-block; min-width: 3em;  }\
+		.wmt-merc-hg { }\
+		.wmt-merc-hg { margin-top: 1em; }\
+		.wmt-merc-hg.month { margin-left: 1em; }\
+		.wmt-merc-hg.day { margin-left: 1em; }\
+		.wmt-merc-hgt { vertical-align: middle; font-weight: bold; text-transform: capitalize; text-decoration: underline;\
+		 cursor: pointer; -moz-user-select: none; }\
+		.wmt-merc-hge { background: url("http://dcdn.heroeswm.ru/i/castle_show_ico.gif") no-repeat; background-size: cover;\
+		 display: inline-block; cursor: pointer; height: 1.5em; width: 1.5em; border-radius: 0.5em; vertical-align: middle;\
+		  margin-left: 0.5em; }\
+		.wmt-merc-hge.open { background-image: url("http://dcdn.heroeswm.ru/i/castle_hide_ico.gif"); }');
+		var rewardHistory = createElement('div', 'wmt-merc-rh');
+		var rewardtitle = createElement('span');
+		rewardtitle.innerHTML = 'Статистика наград';
+		rewardHistory.appendChild(rewardtitle);
+		var getExpanderClass = function(expander) {
+			let result = 'wmt-merc-hge';
+			if (expander.isOpen) {
+				result += ' open';
+			}
+			return result;
+		}
+		var createExpander = function(isOpen) {
+			var result = createElement('span');
+			result.isOpen = isOpen;			
+			result.addEventListener('click', function() {
+				this.isOpen = !this.isOpen;
+				this.className = getExpanderClass(this);
+				
+			}); 
+			result.className = getExpanderClass(result);
+			return result;
+		}
+		var getYearRow = function(year) {
+			let rowId = 'wmt_merc_reward_year_' + year;
+			var row = rewardHistory.querySelector('#' + rowId);
+			if (!row){
+				row = createElement('div', 'wmt-merc-hg year');
+				row.id = rowId;
+				row.rewards = [];
+				
+				let expander = createExpander();
+				
+				let title = createElement('span', 'wmt-merc-hgt');
+				title.innerHTML = 'Год ' + (year  +1900);
+				title.addEventListener('click', function() { expander.click(); });
+				
+				//sum \u2211
+				row.appendChild(title);				
+				row.appendChild(expander);
+				rewardHistory.appendChild(row);				
+			}
+			return row;
+		}
+		var getMonthRow = function(year, month) {
+			let monthId = 'wmt_merc_reward_month_' + month + '_' + year;
+			var row = rewardHistory.querySelector('#' + monthId);
+			if (!row) {
+				row = createElement('div', 'wmt-merc-hg month');
+				row.id = monthId;			
+				var title = createElement('span', 'wmt-merc-hgt');
+				title.innerHTML = new Date(year, month + 1, 1).toLocaleString('ru-RU', { month: 'long'});
+				row.appendChild(title);
+				getYearRow(year).appendChild(row);
+			}
+			return row;
+		}
+		var getDayRow = function(date) {
+			let dayId = 'wmt_merc_reward_day_' + [date.getDate(), date.getMonth(), date.getYear()].join('_');			
+			var row = rewardHistory.querySelector('#' + dayId);
+			if (!row) {				
+				row = createElement('div', 'wmt-merc-hg day');
+				row.id = dayId;
+				var title = createElement('span', 'wmt-merc-hgt');
+				title.innerHTML = date.getDate() + ' ' + getMonthName(date.getMonth() + 1);
+				row.appendChild(title);
+				getMonthRow(date.getYear(), date.getMonth()).appendChild(row);
+			}
+			return row;
+		}
+		for (var ii = OwnInfo.Mercenary.Rewards.length - 1; ii >= 0; ii--) {
+			var reward = OwnInfo.Mercenary.Rewards[ii];
+			var rewardLine = createElement('div', 'wmt-merc-rhl');
+			
+			var timestamp = createElement('span', 'wmt-merc-rlts');
+			var rewardTime  = new Date(reward[0]);
+			timestamp.innerHTML = padLeft(rewardTime.getHours(), 2, '0') + ':' + padLeft(rewardTime.getMinutes(), 2, '0') + ':';
+			rewardLine.appendChild(timestamp);			
+			
+			//rewardLine.appendChild(createGoldImg());			
+			var goldSpan = createElement('span', 'wmt-merc-gs');
+			goldSpan.innerHTML = reward[1];
+			rewardLine.appendChild(goldSpan);
+			for (var jj = 2; jj < reward.length; jj++) {
+				if (reward[jj] <  craft_elements.length) {
+					rewardLine.appendChild(createCraftElementImg(reward[jj]))					
+				} else {
+					rewardLine.appendChild(createTextNode(reward[jj]))
+				}
+			}
+			getDayRow(rewardTime).appendChild(rewardLine);
+		}
+		
+		var row = mainTable.insertRow();
+		var cell = row.insertCell();
+		cell.colSpan = 2;
+		cell.appendChild(rewardHistory);
+	}
+	
     //mercenary.swf
     var acceptLink = document.querySelector('table.wbwhite a[href*="mercenary_guild.php?action=accept"]');
     if (acceptLink) {
-
+		if (OwnInfo.Mercenary.Task && OwnInfo.Mercenary.Failed 
+			&& OwnInfo.Mercenary.Failed.includes(OwnInfo.Mercenary.Task)) {
+			acceptLink.style.color = 'red';		
+		}
+		else {
+			acceptLink.style.color = 'green';
+		}
+		//Можно принять задание? OwnInfo.Mercenary.Task
+		/*!AUTOMATION!*/
+		/*setTimeout(function() { acceptLink.click() }, 1000);*/
+		setInterval(function() { wmt_Sound.beep(); }, 7000);
     }
     else {
-
         var mapLink = document.querySelector('table.wbwhite a[href*="map.php"]');
         if (mapLink) {
             insertMoveLink(mapLink);
+			autopilot.canStart = true;
+			if (OwnInfo.Mercenary.Autopilot) {
+				autopilot.start();	
+			}									
         }
-        else {
-            //log('no map link');
+        else {			
+			if (OwnInfo.Mercenary.Rewards && OwnInfo.Mercenary.Rewards.length > 0) {
+				let reward = OwnInfo.Mercenary.Rewards[OwnInfo.Mercenary.Rewards.length - 1];
+				let blueB = document.querySelector('font[color="blue"]>b>b:last-child');
+				if (blueB) {
+					addStyle('.wmt-merc-reward img, .wmt-merc-reward span { vertical-align: middle; } .wmt-merc-reward img { height: 3em; width: 3em; margin-left: 1em; } .wmt-merc-reward span { font-weight: bold; color: green; } ');
+					let rewardDiv = createElement('div', 'wmt-merc-reward');
+					
+					rewardDiv.appendChild(createGoldImg());
+					let tm = createElement('span');
+					tm.innerHTML = reward[1];
+					rewardDiv.appendChild(tm);
+					
+					for (var jj = 2; jj < reward.length; jj++) {
+						if (reward[jj] <  craft_elements.length) {
+							rewardDiv.appendChild(createCraftElementImg(reward[jj]))					
+						} else {
+							rewardDiv.appendChild(createTextNode(reward[jj]))
+						}
+					}
+									
+					blueB.parentNode.parentNode.parentNode.insertBefore(rewardDiv, blueB.parentNode.parentNode.nextSibling);
+					blueB.parentNode.removeChild(blueB.previousSibling);//br
+					blueB.parentNode.removeChild(blueB);
+				}	 
+			}            
         }
     }
-
 }
-wmt_ph.processMercenaryGuild = function (xmlDoc) {
-    var m = /Приходи\sчерез\s(\d+)\sмин\./.exec(xmlDoc.body.innerHTML);
-    if (m && !Timer.getMercenary().isRunning()) {
+wmt_ph.processMercenaryGuild = function(xmlDoc){	
+	/*Проверка таймера*/
+    let m = /Приходи\sчерез\s(\d+)\sмин\./.exec(xmlDoc.body.innerHTML);
+    if (m && (!OwnInfo.Mercenary.Time ||
+        (OwnInfo.Mercenary.Time && OwnInfo.Mercenary.Interval
+	         && ((getCurrentTime() - OwnInfo.Mercenary.Time) > OwnInfo.Mercenary.Interval))
+        )) {
+		var min = +m[1];
+		if (min == 1) {
+			min = 1.99;
+		}
+		else {
+			min += 0.1;
+		}
         OwnInfo.Mercenary.Time = getCurrentTime();
-        OwnInfo.Mercenary.Interval = 60000 * (+m[1]);
-        OwnInfo.store();
+        OwnInfo.Mercenary.Interval = 60000 * min;
     }
     else {
-        log('-');
+        if (!m) {
+            log('Таймер отсутсвует в принципе!');
+        }
+        else {
+            log('Таймер присутсвует но! ' + JSON.stringify(OwnInfo.Mercenary));
+        }
+        
     }
+	
+	/*Проверка текущей задачи*/		
+	let taskB = document.querySelectorAll('table.wbwhite b');
+	OwnInfo.Mercenary.Task = undefined;	
+	for (let ii = 0; ii < taskB.length; ii++) {
+		if (/\{\d+\}/.test(taskB[ii].textContent)) {
+			OwnInfo.Mercenary.Task = wmt_MT.parse(taskB[ii].textContent);									
+			break;
+		}
+	}	
+	
+	/*Проверка провала*/
+	let failB = xmlDoc.querySelector('font[color="red"]>b');
+	if (failB && OwnInfo.Mercenary.Task && OwnInfo.Mercenary.Failed 
+	&& !OwnInfo.Mercenary.Failed.includes(OwnInfo.Mercenary.Task)) {
+		if (!OwnInfo.Mercenary.Failed) {
+			OwnInfo.Mercenary.Failed = [];
+		}		
+		OwnInfo.Mercenary.Failed.push(OwnInfo.Mercenary.Task);		
+	}
+
+	/*Проверка успеха и награды*/
+	let rewardStr = 'Вы получаете';
+	let doneB = xmlDoc.querySelectorAll('font[color="blue"] b');	
+	for (var ii = 0; ii < doneB.length; ii++) {
+		let str = doneB[ii].textContent;		
+		let rsi = str.indexOf(rewardStr);		
+		if (rsi >= 0) {
+			let reward = [];
+			reward.push(getCurrentTime());
+			let items = str.substring(rsi + rewardStr.length).split(',');
+			let m = /\d+/.exec(items[0]);
+			if (m) {
+				reward.push(+m[0]);
+			}
+			if (items.length > 1) {
+				for (var ii = 1; ii < items.length; ii++) {
+					let vl = items[ii].trim();
+					for (var jj = 0; jj < craft_elements.length; jj++) {
+						if (craft_elements[jj][0] == vl) {
+							reward.push(jj);
+							vl = undefined;
+							break;
+						}
+					}
+					if (vl) {
+						reward.push(vl);
+					}	
+				}
+			}	
+					
+			if (!OwnInfo.Mercenary.Rewards) {
+				OwnInfo.Mercenary.Rewards = [];
+			}
+			OwnInfo.Mercenary.Rewards.push(reward);
+			break;
+		}
+	}
+	
+	
+	OwnInfo.store();		
 }
 wmt_ph.setupForumMessages = function () {
     /*battle link set*/
@@ -4104,7 +5270,7 @@ wmt_ph.setupWarlog = function () {
                         }
 
                         switch (type) {
-                            case "•": c3.title = "Засада вора / Разбойники в ГН"; break;
+                            case "•": c3.title = "Засада вора / Разбойники в ГН"; break;							
                             case "т": c3.title = "Гильдия тактиков"; break;
                         }
 
@@ -4169,12 +5335,39 @@ wmt_ph.processWarlog = function (xmlDoc) {
     }
 }
 wmt_ph.setupArtInfo = function () {
+    //Large modifers
+    var tbl = document.querySelector('td.wblight>center>table[background*="artifacts"]');
+    if (tbl) {
+        let imgSize = 200;
+        let elSize = 20;
+        let elCount = 5;
+        tbl.rows[0].cells[0].firstChild.height = imgSize - elSize;
+        tbl.rows[1].cells[0].firstChild.height = elSize;
+        tbl.rows[1].cells[0].firstChild.width = imgSize - (elSize * elCount);
+        for (let ii = 1; ii <= elCount; ii++) {
+            tbl.rows[1].cells[ii].firstChild.width = elSize;
+            tbl.rows[1].cells[ii].firstChild.height = elSize;
+        }
+    }
     /*Тут можно пристроить оптислом*/
     var b = document.querySelectorAll('td.wblight>b');
     for (var ii = 0; ii < b.length; ii++) {
         if (~b[ii].textContent.indexOf('Стоимость ремонта')) {
             var id = getArtifactId(location.href);
             if (id) {
+				/*Insert auction link*/
+				var auc = new wmt_auc_items();
+				auc.update();
+				var cat = auc.getCategory(id);
+				if (cat){
+					var buyAuc = document.createElement('a');
+					buyAuc.href = getArtAucHref(id, cat);
+					buyAuc.style = "margin-left: 1em; font-style: italic;";
+					buyAuc.innerHTML = '[Рынок]';
+					b[ii].parentNode.appendChild(buyAuc);
+				}
+				 
+				/*Insert item price per battle*/
                 var item = new wmt_item(id);
                 item.update();
 
@@ -4303,11 +5496,33 @@ wmt_ph.setupArmyInfo = function () {
 
     }
 }
+wmt_ph.processAuction = function(xmlDoc){	
+	/*Check items categories*/
+	var auc = new wmt_auc_items();
+	auc.update();
+	
+	var arts = xmlDoc.querySelectorAll('form[name="sel"]>select[name="ss2"]>option');
+	if (auc.needUpdate(arts.length)) {
+		auc.lastUpdate = getCurrentTime();
+		auc.count = arts.length;
+		auc.all = {};
+		for (var ii = 0; ii < arts.length; ii++){
+			var str = arts[ii].value.toString().split('#');			
+			if (str.length == 2){
+				if (!auc.all[str[0]]){
+					auc.all[str[0]] = [];
+				}
+				auc.all[str[0]].push(str[1]);
+			}	
+		}		
+		auc.store();						
+	}
+}
 wmt_ph.setupAuction = function () {
     var artSelect = document.querySelector('select[name="ss2"]');
     if (artSelect) {
-        /*Цена за бой*/
-        addStyle('.wmt-auc-ppb { -moz-user-select: none; -webkit-user-select: none; user-select: none; }\
+		/*Цена за бой*/
+		addStyle('.wmt-auc-ppb { -moz-user-select: none; -webkit-user-select: none; user-select: none; }\
 .wmt-auc-ppb>span { margin-right: 2px; border-radius: 1em; color: #E700FF; }\
 .wmt-auc-lin { text-decoration: none; border-bottom: 1px solid black; display: inline-block; margin-bottom: 3px; white-space: nowrap; }\
 .wmt-auc-lin:before { content: "#"; }  .wmt-auc-lin>span>em { margin-left: 4px; }\
@@ -4315,42 +5530,104 @@ wmt_ph.setupAuction = function () {
 .wmt-auc-it-best:before { content:"!";  background: lime; position: relative; top: 1.1em;  left: 0.1em; margin-top: -1.7em;\
     display: inline-block; font-size: x-large; border-radius: 0 0 0.5em 0.5em; width: 0.5em; text-align: center; }\
 .wmt-auc-it-best>img { display: block; }');
-
-        var getDur = function (c) {
-            var im = c.querySelector('img[title*="Прочность"]');
-            if (im) {
-                var m = /(\d+)\/(\d+)/.exec(im.title);
-                if (m) {
-                    return { cur: +m[1], max: +m[2] };
-                }
-            }
-        }
-
-        var getPrice = function (c) {
-            var m = /[\d,]+/.exec(c.textContent);
-            if (m) {
-                return +(m[0].replace(/,/g, ''))
-            };
-        }
-
-        var getModReplacement = function (m) {
-            var reg = /[EWAFIN](\d+)/g;
-            var mods = [];
-            var count = 0;
-            var mm;
-            while ((mm = reg.exec(m)) != null) {
-                mods.push(mm[0]);
-                count += (+mm[1]);
-            }
-            if (mods.length > 0) {
-                return '<b>M' + count + '</b><span><em>' + mods.join('</em><em>') + '</em></span>';
-            }
-            else {
-                return m;
-            }
-        }
-
-        var row = artSelect.parentNode.parentNode.parentNode;
+		addStyle('.wmt-auc-filter { display: block; white-space: nowrap; font-size: small; }\
+ .wmt-auc-filter>span:after { content: ":"}\
+ .wmt-auc-filter>input { width: 5em; margin-left: 0.3em;}');
+ 		addStyle('.overprice { opacity: 0.1; } .overprice:hover {  opacity: 1; } ');
+				
+		
+		var getModReplacement = function(m){
+			var reg = /[EWAFIN](\d+)/g;
+			var mods = [];
+			var count = 0;
+			var mm;
+			while ((mm = reg.exec(m)) != null) {
+				mods.push(mm[0]);
+				count += (+mm[1]);
+			}
+			if (mods.length > 0) {
+				return '<b>M' + count + '</b><span><em>' + mods.join('</em><em>') + '</em></span>';
+			}
+			else {
+				return m;
+			}
+		}
+		
+		var row = artSelect.parentNode.parentNode.parentNode;
+		/*-->Фильтр строк*/
+		var auc_filter = {			
+			getStorageKey: function() {
+				return 'auc_filter_' + wmt_page.playerId;
+			},
+			update: function() {
+				Storage.update(this);
+			},
+			store: function() {
+				Storage.store(this);
+			}
+		}
+		auc_filter.update();
+		var cat = getNthMatch(/cat=([^&]+)/, location.search, 1);
+		var art_type = getNthMatch(/art_type=([^&]+)/, location.search, 1);
+		if (cat == 'res') {
+			var resType = getNthMatch(/type=([^&]+)/, location.search, 1); 			
+			if (resType == '1') {
+				art_type = 'b_wood';
+			}
+			else if (resType == '2') {
+				art_type = 'b_ore';
+			}
+			else if (resType == '3') {
+				art_type = 'b_mercury';
+			}
+			else if (resType == '4') {
+				art_type = 'b_sulphur';
+			}
+			else if (resType == '5') {
+				art_type = 'b_crystal';
+			}
+			else if (resType == '6') {
+				art_type = 'b_gem';
+			}
+		}
+		if (!auc_filter[cat]) {
+			auc_filter[cat] = {};
+		}
+		if (art_type && !auc_filter[cat][art_type]) {
+			auc_filter[cat][art_type] = { };
+		}		
+		
+		if (art_type) {
+			 
+			var maxPriceInput = createElement('input');
+			maxPriceInput.type = 'text';			
+			maxPriceInput.value = auc_filter[cat][art_type].max ? auc_filter[cat][art_type].max : '';
+			maxPriceInput.addEventListener('change', function() {
+				auc_filter[cat][art_type].max = this.value;
+				auc_filter.store();
+			})
+			
+			var maxPriceSpan = createElement('span');
+			maxPriceSpan.innerHTML = 'max';
+			
+			var lb = createElement('label', 'wmt-auc-filter');
+			lb.appendChild(maxPriceSpan);			
+			lb.appendChild(maxPriceInput);			
+			
+			for (var ii = 0; ii < row.nextSibling.childNodes.length; ii++) {
+				var cell = row.nextSibling.childNodes[ii];				
+				if (cell.textContent == 'Цена'){
+					cell.appendChild(lb);
+				}	
+			}			
+		}
+		else {			
+			/*Настроить*/
+			
+		}
+		/*<--Фильтр строк*/	
+		
+		
         while (row) {
             row = row.nextSibling;
             if (row && row.cells.length > 3) {
@@ -4362,8 +5639,8 @@ wmt_ph.setupAuction = function () {
                 var descCell = imgCell.nextSibling;
                 var priceCell = row.cells[2];
 
-                var d = getDur(imgCell);
-                var p = getPrice(priceCell);
+                var d = getItemDurability(imgCell);
+                var p = getNumber(priceCell);
 
                 var itemClasses = [];
                 //wmt-auc-it-best - best choise
@@ -4375,20 +5652,48 @@ wmt_ph.setupAuction = function () {
                     else {
                         itemClasses.push('wmt-auc-it-new');
                     }
-                }
+                }				 
 
                 //price per battle
+				var filterPrice = p;
                 if (d && p) {
+					filterPrice = p / d.cur;
                     var b = createElement('b');
-                    b.appendChild(createTextNode((p / d.cur).toFixed(2)));
+                    b.appendChild(createTextNode(filterPrice.toFixed(2)));
                     var sign = createElement('span');
                     sign.appendChild(createTextNode("\u2460"));
                     var el = createElement('span', 'wmt-auc-ppb');
                     el.title = 'Цена одного боя';
                     el.appendChild(sign);
                     el.appendChild(b);
-                    priceCell.appendChild(el);
-                }
+                    priceCell.appendChild(el);										
+                } 
+				
+				var art_id = art_type;
+				if (!art_id ){
+					var art_link = imgCell.querySelector('a[href*="art_info"]');
+					if (art_link) {
+						art_id = getNthMatch(/id=([^&]+)/, art_link.href, 1);
+					}
+					else {
+						var img = imgCell.querySelectorAll('img');
+						for (var ii = 0; ii < img.length; ii++) {
+							art_id = getNthMatch(/([^\/]+)\.\w+$/, img[ii].src, 1);
+							break;							
+						}
+					}
+				}
+				
+				row.className += ' ' + art_id; 
+				
+				if (cat != 'my' && (!auc_filter[cat][art_id] || !auc_filter[cat][art_id] || auc_filter[cat][art_id].max < filterPrice)) {						
+						if (art_type) {
+							row.className += ' overprice';
+						}
+						else {							
+							row.style.display = 'none';	
+						}
+				}			
 
                 //Join lot links, separate modifiers
                 var inf = descCell.querySelector('b>a.pi[href*="auction_lot_protocol.php?id="]');
@@ -4409,6 +5714,82 @@ wmt_ph.setupAuction = function () {
             }
         }
     }
+}
+wmt_ph.setupAuctionNewLot = function() {
+	
+	var auc = new wmt_auc_items();
+	auc.update();
+	
+	var mainTable = document.querySelector('table.wbwhite');
+		
+	var formCell = mainTable.firstChild.firstChild;
+	formCell.style.verticalAlign = 'top';
+	
+	var lCell = formCell.insertCell();	
+	
+	var responseProcessing = function(r){
+		if (r.status == "200" && r.readyState == 4){
+			lCell.innerHTML = '';
+			var xmlDoc = parseXmlDoc(r.responseText);
+			var itemRows = xmlDoc.querySelectorAll('tr.wb');
+			var tbl = document.createElement('table');			
+			for (var ii = 0; ii < itemRows.length; ii++){
+				var row = tbl.insertRow();
+				row.insertCell().innerHTML = itemRows[ii].firstChild.innerHTML;
+				var pis = row.querySelectorAll('a.pi');
+				for (var jj = 0; jj < pis.length; jj++){
+					pis[jj].parentNode.removeChild(pis[jj]);
+				}
+				
+				
+				var d = getItemDurability(row.firstChild);
+				var p = getNumber(itemRows[ii].cells[2]);
+				if (d && p){
+					var priceCell = row.insertCell();
+					var gim = createGoldImg();
+					gim.style.verticalAlign = 'inherit';
+					priceCell.appendChild(gim);
+					priceCell.appendChild(createTextNode(p));
+					priceCell.appendChild(createElement('br'));
+					priceCell.appendChild(createTextNode("\u2460"));
+					priceCell.appendChild(createTextNode((p/ d.cur ).toFixed(2)));
+				}
+			}			
+			lCell.appendChild(tbl);
+		}
+		else{
+			lCell.innerHTML = 'Не удалось получить информацию';
+		}		
+	}
+	
+	var initDetailRequest = function(value) {
+		var ss = value.split('@');
+		if (ss.length == 2){
+			var code = ss[0]
+			var cat = auc.getCategory(code);
+			if (cat) {
+				lCell.innerHTML = 'Получение данных...';
+				GM_xmlhttpRequest({
+					url: getArtAucHref(code, cat),
+                    method: 'GET',
+                    headers: { 'Referer': location.href, 'DNT': '1' },
+                    overrideMimeType: 'text/html;charset=windows-1251',
+                    onload: responseProcessing
+				});	
+			}
+			else {
+				lCell.innerHTML = 'Не хватает информации для создания запроса';
+			}			
+		}
+		else {
+			lCell.innerHTML = 'Поиск информации не предусмотрен';
+		}
+	}
+	
+	var item = document.querySelector('select[name="item"]');
+	if (item){
+		item.addEventListener('change', function() { initDetailRequest(this.value)});
+	}
 }
 wmt_ph.setupTavern = function () {
     if (updateMoveTimer()) {
@@ -4485,7 +5866,7 @@ wmt_ph.setupTavern = function () {
         /*Возвращает интервал автообновления, сек*/
         getRefreshDelay: function () { return  Math.floor((Math.random() * 3) + 2); },
         /*Возвращает максимальное время ожидания, мс*/
-        getInterval: function () { return 45000; },
+        getInterval: function () { return 300000; },
         getStorageKey: function () {
             return 'tavernAutoJoin';
         },
@@ -4525,18 +5906,18 @@ wmt_ph.setupTavern = function () {
                 }
             }
             t.store();
-            if (!t.isEnabled()) {
-                t.clear();
-                if (waitConfirmation) {
-                    waitConfirmation.click();
+            if (!t.isEnabled()) {                
+                if (this.startTime && waitConfirmation) {
+                    setTimeout(() => waitConfirmation.click(), 500);
                 }
+                t.clear();
                 return;
             }
             if (t.selectedInitiatorId)
             {             
                 if (waitConfirmation) {
                     if (t.waitingStart) {
-                        if ((getCurrentTime() - t.waitingStart) > t.getInterval() / 2) {
+                        if ((getCurrentTime() - t.waitingStart) > 15000) {
                             t.pushRejecterId(t.selectedInitiatorId);
                             t.selectedInitiatorId = undefined;
                             t.waitingStart = undefined;
@@ -4553,7 +5934,7 @@ wmt_ph.setupTavern = function () {
                     //Ждали кого то но он отказался или партия была сыграна
                     if (t.waitingStart) {
                         var waitingTime = getCurrentTime() - t.waitingStart;
-                        if (waitingTime < (t.getInterval() / 2)) {
+                        if (waitingTime < (15000)) {
                             //он отказался 
                             t.pushRejecterId(t.selectedInitiatorId);
                             t.store();
@@ -5183,7 +6564,7 @@ wmt_ph.processEcostatDetails = function (xmlDoc, href) {
     if (t && t.rows.length > 1) {
         var aId = getArtifactId(href);
         if (aId) {
-            var v = parseInt(t.rows[1].lastChild.textContent);
+            var v = parseInt(t.rows[1].lastChild.textContent.replace(',', ''));
             var i = new wmt_item(aId);
             i.update();
             if (i.mapValue != v) {
@@ -5219,7 +6600,7 @@ wmt_ph.setupEcostatDetails = function () {
 
         var headRow = tbl.rows[0];
         var shc = headRow.insertCell(1);
-        shc.className = 'wbcapt';
+        shc.className = 'wbwhite';
         shc.align = 'center';
         shc.innerHTML = '<b>Сектор</b>';
 
@@ -5820,37 +7201,23 @@ wmt_ph.setupSkillWheelDemo = function () {
             cf = m[1];
             cc = m[2] || 0;
         }
-        addStyle('.wmt-swh-anc { margin-left: 3px; }');
+        addStyle('.wmt-swh-anc { margin-left: 3px; } .wmt-swh-anc[title] { text-transform: capitalize; }');
         var root = obj.parentNode.parentNode.previousSibling;
-        var addRaceLink = function (name, f, c, imgSrc) {
+        var addRaceLink = function (f, c) {
             var img = createElement('img');
-            img.src = 'http://dcdn.heroeswm.ru/i/' + imgSrc + '.gif';
+            img.src = wmt_Faction.getIconUrl(f, c);
             if (f == cf && c == cc) {
                 img.height = 30;
             }
             var link = createElement('a', 'wmt-swh-anc');
             link.href = 'skillwheel_demo.php?f=' + f + '&c=' + c;
             link.appendChild(img);
-            link.title = name;            
+            link.title = wmt_Faction.getName(f, c);            
             root.appendChild(link);
         }
-        addRaceLink('Рыцарь', 1, 0, 'r1');
-        addRaceLink('Рыцарь света', 1, 1, 'r101');
-        addRaceLink('Некромант', 2, 0, 'r2');
-        addRaceLink('Некромант повелитель смерти', 2, 1, 'r102');
-        addRaceLink('Маг', 3, 0, 'r3');
-        addRaceLink('Маг разрушитель', 3, 1, 'r103');
-        addRaceLink('Эльф', 4, 0, 'r4');
-        addRaceLink('Эльф заклинатель', 4, 1, 'r104');
-        addRaceLink('Варвар', 5, 0, 'r5');
-        addRaceLink('Варвар крови', 5, 1, 'r105');
-        addRaceLink('Варвар шаман', 5, 2, 'r205');
-        addRaceLink('Темный эльф', 6, 0, 'r6');
-        addRaceLink('Демон', 7, 0, 'r7');
-        addRaceLink('Демон тьмы', 7, 1, 'r107');
-        addRaceLink('Гном', 8, 0, 'r8');
-        addRaceLink('Степной варвар', 9, 0, 'r9');
-
+		wmt_Faction.items.forEach(function(item) {
+			addRaceLink(item[0], item[1])
+		})
     }
 }
 wmt_ph.setupCastle = function () {
@@ -5861,8 +7228,9 @@ wmt_ph.setupCastle = function () {
         factionId = +m[1];
     }
     else {
-        //or myFaction
+        //or myFaction		
         var options = document.querySelectorAll('select[name="fract"] option');
+		factionId = options.length;
         for (var ii = 0; ii < options.length; ii++) {
             var n = parseInt(options[ii].value);
             if (n > 0 && n != ii) {
@@ -5871,6 +7239,7 @@ wmt_ph.setupCastle = function () {
             }
         }
     }
+	
     var upg = /show_upg=1/.test(location.href);
 
     var castle = {
@@ -5878,7 +7247,7 @@ wmt_ph.setupCastle = function () {
         addCostTo: function (total, fId, condition) {
             if (!total || ! this.faction[fId]) return;
             this.faction[fId].forEach(function (b) {
-                if (condition && condition(b)) {
+                if (!condition || condition(b)) {
                     for (var r in b.cost) {
                         if (total[r] == undefined) { total[r] = 0; }
                         total[r] += b.cost[r];
@@ -5893,7 +7262,9 @@ wmt_ph.setupCastle = function () {
             }
             else {
                 for (var n in this.faction) {
-                    this.addCostTo(result, n, condition);
+					if (n > 0) {
+						this.addCostTo(result, n, condition);	
+					}                    
                 }
             }
             return result;
@@ -5968,10 +7339,9 @@ wmt_ph.setupCastle = function () {
                 }
                 nr = nr.nextSibling;
             }
-            castle.add(name, lev, price, isConstructed, isArmyUp);
-            log(name);
+            castle.add(name, lev, price, isConstructed, isArmyUp);            
         }
-        castle.store();
+        castle.store();		
 
         var valueDiv = createElement('div', 'wmt-cst-vd');
         addStyle('.wmt-cst-vd { text-align: left; }');
@@ -6059,6 +7429,394 @@ wmt_ph.setupCastle = function () {
         cl.parentNode.nextSibling.firstChild.appendChild(valueDiv);
     }
 }
+wmt_ph.setupTask = function(){
+	var tasks = document.querySelectorAll('img[src*="tasks/g3.jpg"]');
+	for (var ii = 0; ii < tasks.length; ii++) {
+		tasks[ii].parentNode.parentNode.parentNode.parentNode.parentNode.parentNode.style.display = "none";
+	}
+	var subMits = document.querySelectorAll('form[action*="task_guild.php"]>input[type="submit"][value*="Улучшить"]')
+	for (var ii = 0; ii < subMits.length; ii++) {
+       
+		subMits[ii].parentNode.parentNode.innerHTML = '<b style="color: green">Выполнено</b>';
+	}
+}
+wmt_ph.processShowPerkInfo = function() {
+	var m = /name=(.+)/.exec(location.href);
+	if (!m ||m.length < 2){
+		log('name is not found: ' + location.href);
+		return;			
+	}
+	var code = m[1].toLowerCase().trim();
+	if (!code) {
+		log('code not found');
+		return;
+	}
+	
+	
+	var nc = document.querySelector('table.wbwhite>tbody>tr:first-child');
+	if (!nc){
+		log('name cell is not found');
+		return;
+	}
+	
+	var nca = nc.textContent.split(':');
+	if (!nca || nca.length < 2){
+		log('Unexpected name cell format: "' + nc.textContent + '"');
+		return;
+	}
+	
+	var name = nca[1].trim();
+	if (!name){
+		log('Incorrect name');
+		return;
+	}	
+	
+	var dc = document.querySelector('table.wbwhite>tbody>tr:nth-child(2)>td:nth-child(2)');
+	if (!dc){
+		log('description cell is not found');
+		return;
+	}
+	
+	var desc = dc.childNodes[dc.childNodes.length - 1].nodeValue;
+	if (!desc){
+		log('Description is not found');
+		return;
+	}
+	 
+	var perk = new wmt_perk(code, name, desc);
+	perk.store();		
+}
+wmt_ph.setupShop = function(){
+
+	/*collapse details*/
+	addStyle('.wmt-shop-table { vertical-align: top; }\
+.wmt-shop-table>br { display: none; }\
+.wmt-shop-table>table { display: none; }\
+.wmt-shop-table>font { color: black; margin-bottom: 1em; font-size: large !important; }\
+.wmt-shop-icon-panel { width: 100%; padding: 1em; }\
+.wmt-shop-item-icon { display: inline-block; width: 50px; height: 50px; cursor: pointer; }\
+.active { height: 46px; width: 46px; border: 2px solid yellow; }');	
+	var td = document.querySelector('table.wb>tbody>tr:last-child>td:first-child');
+	if (!td)
+	{
+		log('td is not found');
+		return;
+	}
+	var row = td.parentNode;
+	row.removeChild(td);
+	row.appendChild(td);
+	var hc = row.previousSibling.lastChild;
+	row.previousSibling.removeChild(hc);
+	row.previousSibling.insertBefore(hc, row.previousSibling.firstChild);
+	var lastIcon;
+	td.className += ' wmt-shop-table';
+	var itemTable = td.querySelectorAll('table.wb');
+	var iconPanel = document.createElement('div');
+	iconPanel.className = 'wmt-shop-icon-panel';
+	for (var ii = 0; ii < itemTable.length; ii++){	
+		var icon = document.createElement('img');
+		icon.className = 'wmt-shop-item-icon';		
+		icon.table = itemTable[ii];
+		icon.title = itemTable[ii].firstChild.firstChild.textContent.trim();
+		icon.addEventListener('click', function() {
+			if (lastIcon != this) {
+				if (lastIcon) {
+					lastIcon.className = 'wmt-shop-item-icon';
+					lastIcon.table.style.display = 'none';
+				}
+				lastIcon = this;
+				lastIcon.className = 'wmt-shop-item-icon active';
+				lastIcon.table.style.display = 'inline-block';					 
+			}				
+		})
+		iconPanel.appendChild(icon);
+		var img = itemTable[ii].querySelector('img');
+		if (img) {
+			if (/transparent\.gif/.test(img.src))
+			{
+				icon.src = getNthParentNode(img, 5).getAttribute('background');	
+			}
+			else
+			{
+				icon.src = img.src;	
+			}			
+		}
+		else{
+			log('no img');
+		}
+		if (!lastIcon){
+			icon.click();			
+		}						
+	}
+	td.appendChild(iconPanel);
+	
+}
+wmt_ph.setupWar = function() {	
+	wmt_Sound.beep();
+	
+	var warId = /warid=(\d+)/i.exec(location.href)[1];
+	
+	var handleBattleResponse = function(r) {		
+		if (r.readyState == 4 && r.status == "200") {
+			if (~r.responseText.indexOf('Defeated:')){
+				onBattleEnd(r);				
+			}
+			else {				
+				requestBattle();
+			}			
+		}		
+	}
+	
+	var requestBattle = function() {
+		log('request battle ' + warId);
+		setTimeout(function() {
+			GM_xmlhttpRequest({					 
+				url: '/battle.php?lastturn=-1&warid=' + warId,
+				method: 'GET',
+				headers: { "Referer": location.href, "DNT": "1" },                
+                onload: handleBattleResponse
+			});
+		}, 5000)
+	}
+	
+	/*Вызывается когда бой заканчивается*/
+	var onBattleEnd = function(xmlDoc) {		
+		if (OwnInfo.Mercenary.Autopilot) {
+			location.assign('/map.php');
+		}		
+	}
+	
+	/*Запуск определения окончания боя*/
+	if (OwnInfo.Mercenary.Autopilot && OwnInfo.Mercenary.Task) {
+		document.title = wmt_MT.toString(OwnInfo.Mercenary.Task);
+		requestBattle();	
+	}	
+}
+wmt_ph.setupPlstatsMerc = function () {
+	addStyle('.wmt-stat-merc { display: block; } .wmt-stat-merc.wrong { font-weight: bold; }')
+	var link = document.querySelectorAll('a[href*="warlog"]');
+	for (let ii = 0; ii < link.length; ii++) {
+		var task = wmt_MT.parse(link[ii].textContent);
+		if (task) {
+			var taskSpan = createElement('span', 'wmt-stat-merc');
+			taskSpan.innerHTML = wmt_MT.toString(task);
+			taskSpan.title = JSON.stringify(task);
+			if (link[ii].textContent != taskSpan.innerHTML) {
+				taskSpan.className += ' wrong';
+			}
+			link[ii].parentNode.appendChild(taskSpan);			
+		}
+		else {
+			//
+		}
+	}
+}
+wmt_ph.setupSearch = function () {
+    let sectorIndex, district, player_id, startTime, sectorObjects, lastObjectIndex;
+    addStyle('.work-search { margin-left: 2rem; }');
+    let resultContainer = createElement('div', 'work-search');
+    let startWorkSearch = createElement('button');
+    startWorkSearch.appendChild(createTextNode('Поиск рабочих мест'));
+    startWorkSearch.addEventListener('click', () => {
+        let playerInput = document.querySelector('input[name="key"]');
+        if (playerInput) {
+            player_id = parseInt(playerInput.value);            
+        }
+        if (!player_id) {
+            player_id = wmt_page.playerId;
+        }
+        shifts.innerHTML = '';
+        startWorkSearch.disabled = true;
+        sectorIndex = 0;
+        district = -1;
+        startTime = getCurrentTime();
+        requestSector();
+    })
+    let shifts = createElement('textarea');
+    resultContainer.appendChild(startWorkSearch);
+    resultContainer.appendChild(createElement('br'));
+    resultContainer.appendChild(shifts);
+    document.body.appendChild(resultContainer);    
+
+    let handleMapSector = (r) => {
+        if (r.status == "200" && r.readyState == "4") {
+            let xDoc = parseXmlDoc(r.responseText);
+            let objects = xDoc.querySelectorAll('table.wb a[href*="object-info.php?id="]');
+            sectorObjects = [];
+            for (let ii = 0; ii < objects.length; ii++) {
+                let m =  /\?id=(\d+)/.exec(objects[ii].href);
+                if (m && m[1]
+                    && !sectorObjects.includes(m[1])) {
+                    sectorObjects.push(m[1]);
+                }
+            }
+            log('Sector #' + sectorIndex + ' District ' + district + ' has ' + sectorObjects.length + ' following objects ' + JSON.stringify(sectorObjects));
+            lastObjectIndex = -1;
+            setTimeout(requestObjectWorkers, 1000);
+        }        
+    }
+
+    let getSectorUrl = () => {
+        let s = Map.sectors[sectorIndex];
+        let st = (district > 1) 
+            ? 'sh'
+            : (district > 0 ? 'fc' : 'mn');
+        return '\map.php?cx=' + s.x + '&cy=' + s.y + '&st=' + st;
+    };
+
+    let requestSector = () => {
+        if (district < 2) {
+            district += 1;
+        }
+        else {
+            district = 0;
+            sectorIndex += 1;
+        }
+        
+        if (sectorIndex >= Map.sectors.length) {
+            //The end
+            startWorkSearch.disabled = false;
+            startWorkSearch.innerHTML = 'Начать новый поиск';
+            resultContainer.appendChild(createTextNode('Поиск закончен за ' + Math.floor((getCurrentTime() - startTime) / 1000) + ' секунд.'));
+        }
+        else {
+            startWorkSearch.innerHTML = 'Поиск завершен на ' + (100 * sectorIndex / Map.sectors.length).toFixed(1) + '%';
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: getSectorUrl(),
+                onload: handleMapSector
+            });
+        }
+    }
+
+    let requestObjectWorkers = () => {
+        lastObjectIndex += 1;
+        if (lastObjectIndex < sectorObjects.length) {
+            objectId = sectorObjects[lastObjectIndex];
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: 'http://www.heroeswm.ru/objectworkers.php?id=' + objectId,
+                onload: handleObjectWorkers
+            });
+        }
+        else {
+            setTimeout(requestSector, 1000);
+        }        
+    };
+
+    let handleObjectWorkers = (r) => {
+        if (r.status == "200" && r.readyState == "4") {
+            let xDoc = parseXmlDoc(r.responseText);
+            let pl_info = xDoc.querySelectorAll('a.pi[href*="pl_info.php?id=' + player_id + '"]');
+            log('object #' + objectId + ' = ' + pl_info.length)
+            if (pl_info.length > 0) {
+                shifts.appendChild(createTextNode('#' + objectId + '\r\n'));                
+                for (let ii = 0; ii < pl_info.length; ii++) {                    
+                    let m = /\d{2}-\d{2}-\d{2} \d{2}:\d{2}/.exec(pl_info[ii].parentNode.textContent);
+                    if (m) {
+                        shifts.appendChild(createTextNode(' ' + m[0] + '\r\n'));                        
+                    }
+                }                
+            }
+        }
+        setTimeout(requestObjectWorkers, 1000);
+    }
+}
+wmt_ph.setupSms = function() {
+    let ip = document.querySelector('form[action="sms.php"] input[name="search_nik"]');
+    if (ip) {
+        let tbl = getNthParentNode(ip, 4);
+        if (tbl) {
+            var pageSettings = {
+                enabled: false,
+                from: undefined,
+                lastId: undefined,
+                getStorageKey: function () { return 'smssettngs_' + wmt_page.playerId; },
+                store: function () { Storage.store(this); },
+                update: function () { Storage.update(this); }
+
+            };
+
+            let reloadTimeout;
+
+            let checkUpdates = () => {
+                //сравнить максимальный sms_id с последним pageSettings.lastId
+                // если max_sms_id > pageSettings.lastId то pageSettings.lastId = max_sms_id и гудим
+                reloadTimeout = setTimeout(() => location.reload(), 45000);
+            }
+
+            pageSettings.update();
+
+            let row = tbl.insertRow();
+            row.className = 'wblight';
+            let cell = row.insertCell();
+            cell.className = 'wmt-sms-wait';
+            cell.colSpan = 2;
+
+            let switcher = createElement('input');
+            switcher.type = 'checkbox';
+            switcher.checked = pageSettings.enabled;
+            switcher.addEventListener('change', function () {
+                pageSettings.enabled = this.checked;
+                pageSettings.store();
+                if (this.checked) {
+                    checkUpdates();
+                }
+                else {
+                    clearTimeout(reloadTimeout)
+                }
+            })
+
+            let from = createElement('input');
+            from.type = 'text';
+            if (pageSettings.from) {
+                from.value = pageSettings.from;
+            }
+            from.addEventListener('change', function () {
+                pageSettings.from = this.value;
+                pageSettings.store();
+            })
+
+            addStyle('.wmt-sms-wait label { display: block; } .wmt-sms-wait label input { vertical-align: middle; } .wmt-sms-wait input[type="text"] { margin-left: 0.5rem; width: 5rem; }');
+
+            let lbl = createElement('label');
+            lbl.appendChild(switcher);
+            lbl.appendChild(createTextNode('ждать новые письма'));
+            cell.appendChild(lbl);
+
+            cell.appendChild(createTextNode('Только от'));
+            cell.appendChild(from);
+
+            if (pageSettings.enabled) {
+                checkUpdates();
+            }
+        }
+    }
+}
+
+wmt_ph.setupTransfer = function () {    
+    if (location.hash) {
+        log('location.hash: ' + location.hash);
+        let inputs = ['nick', 'desc', 'gold', 'wood', 'ore', 'mercury', '']
+        var hashParam = decodeURIComponent(location.hash).substring(1).split('|');
+        for (var ii = 0; ii < hashParam.length; ii++) {
+            if (!hashParam[ii]) continue;
+            if (inputs.length > ii) {
+                let inp = document.querySelector('input[name="' + inputs[ii] + '"]');
+                if (inp) {
+                    inp.value = hashParam[ii];
+                }
+                else {
+                    log('Can not find input with the name "' + inputs[ii] + '"');
+                }
+            }
+            else {
+                log('Unsupported hash param #' + ii);
+            }            
+        }
+    }
+    
+}
 wmt_ph.process = function () {
     wmt_ph.all.forEach(function (ph) { ph.process(document); });
 }
@@ -6078,7 +7836,8 @@ wmt_ph.all = [
     new wmt_ph(/battlechat\.php/, wmt_ph.setupBattleChat),//
     new wmt_ph(/pl_hunter_stat\.php/, wmt_ph.setupPlayerHunterStat),//
     new wmt_ph(/army_info\.php\?name=/, wmt_ph.setupArmyInfo),//
-    new wmt_ph(/auction\.php/, wmt_ph.setupAuction),//
+    new wmt_ph(/auction\.php/, wmt_ph.setupAuction, wmt_ph.processAuction),//
+    new wmt_ph(/auction_new_lot\.php/, wmt_ph.setupAuctionNewLot),
     new wmt_ph(/tavern\.php/, wmt_ph.setupTavern),//
     new wmt_ph(/battle\.php/, wmt_ph.setupBattleResult),//
     new wmt_ph(/ecostat_details\.php\?r=/, wmt_ph.setupEcostatDetails, wmt_ph.processEcostatDetails),//
@@ -6087,7 +7846,15 @@ wmt_ph.all = [
     new wmt_ph(/inventory\.php/, wmt_ph.setupInventory, wmt_ph.processInventory),
     new wmt_ph(/transfer\.php/, undefined, wmt_ph.processTransfer),
     new wmt_ph(/skillwheel_demo\.php/, wmt_ph.setupSkillWheelDemo),
-    new wmt_ph(/castle\.php/, wmt_ph.setupCastle)
+    new wmt_ph(/castle\.php/, wmt_ph.setupCastle),
+    new wmt_ph(/task_guild\.php/, wmt_ph.setupTask),
+	new wmt_ph(/showperkinfo\.php/, undefined, wmt_ph.processShowPerkInfo),
+	new wmt_ph(/shop\.php/, wmt_ph.setupShop),
+	new wmt_ph(/war\.php/, wmt_ph.setupWar),
+	new wmt_ph(/plstats_merc\.php/, wmt_ph.setupPlstatsMerc),
+    new wmt_ph(/search\.php/, wmt_ph.setupSearch),
+    new wmt_ph(/sms\.php/, wmt_ph.setupSms),
+    new wmt_ph(/transfer\.php/, wmt_ph.setupTransfer)
 ];
 
 
@@ -6101,12 +7868,15 @@ if (location.pathname == '/' || location.pathname == '/index.php') {
         setupSiteMainPage();
     }
 }
-else {
-    var sourceMenuTable = document.querySelector('body>table:first-child');
-    wmt_page.update(sourceMenuTable);
+/*Фрейм чата*/
+else if (location.pathname == '/frames.php') {
+	setupChat();
+}
+else {    
+    wmt_page.update();
     OwnInfo.update();
     wmt_ph.process();
     initializeCommonStyles();
-    if (Settings.useCustomMenu) { showCustomMainMenu(sourceMenuTable); }
+    if (Settings.useCustomMenu) { insertCustomMainMenu(); }
     wmt_ph.setup();
 }
