@@ -9,7 +9,7 @@
 // @exclude http://*.heroeswm.ru/chatpost.php
 // @exclude http://*.heroeswm.ru/ch_box.php
 // @exclude http://*.heroeswm.ru/chat.php*
-// @version 1.02
+// @version 1.03
 // @grant GM_log
 // @grant GM_getValue
 // @grant GM_setValue
@@ -7722,7 +7722,40 @@ wmt_ph.setupSearch = function () {
         setTimeout(requestObjectWorkers, 1000);
     }
 }
-wmt_ph.setupSms = function() {
+
+wmt_ph.setupSmsCreate = function () {
+    if (location.hash) {
+        var hashParam = decodeURIComponent(location.hash).substring(1).split('|');
+        for (var ii = 0; ii < hashParam.length; ii++) {
+            if (!hashParam[ii]) continue;
+            if (ii == 0) {
+                let inp = document.querySelector('input[name="subject"]');
+                if (inp) {
+                    inp.value = hashParam[ii];
+                }
+                else {
+                    log('Can not find input with the name "subject"');
+                }
+            }
+            else if (ii == 1) {
+                let ta = document.querySelector('textarea[name="msg"]');
+                if (ta) {
+                    ta.innerHTML = hashParam[ii];
+                }
+                else {
+                    log('Can not find textarea with the name "msg"');
+                }
+            }
+            else {
+                log('Unsupported hash param #' + ii);
+            }
+        }
+    }
+}
+
+wmt_ph.setupSms = function () {
+    
+
     let ip = document.querySelector('form[action="sms.php"] input[name="search_nik"]');
     if (ip) {
         let tbl = getNthParentNode(ip, 4);
@@ -7918,6 +7951,7 @@ wmt_ph.all = [
 	new wmt_ph(/war\.php/, wmt_ph.setupWar),
 	new wmt_ph(/plstats_merc\.php/, wmt_ph.setupPlstatsMerc),
     new wmt_ph(/search\.php/, wmt_ph.setupSearch),
+    new wmt_ph(/sms-create\.php/, wmt_ph.setupSmsCreate),
     new wmt_ph(/sms\.php/, wmt_ph.setupSms),
     new wmt_ph(/transfer\.php/, wmt_ph.setupTransfer),
     new wmt_ph(/el_transfer\.php/, wmt_ph.setupElTransfer),
