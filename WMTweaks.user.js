@@ -9,7 +9,7 @@
 // @exclude http://*.heroeswm.ru/chatpost.php
 // @exclude http://*.heroeswm.ru/ch_box.php
 // @exclude http://*.heroeswm.ru/chat.php*
-// @version 1.01
+// @version 1.02
 // @grant GM_log
 // @grant GM_getValue
 // @grant GM_setValue
@@ -7851,6 +7851,37 @@ wmt_ph.setupElTransfer = function () {
         }
     }
 }
+
+wmt_ph.setupModWorkbench = function () {
+    let tbl = document.querySelectorAll('table.wbwhite[width="70%"]');
+    for (let ii = 0; ii < tbl.length; ii++) {
+        if (tbl[ii].rows.length == 3) {
+            if (/Завершение\sработы:/.test(tbl[ii].rows[2].textContent)) {
+                let owner = tbl[ii].querySelector('a.pi[href*="pl_info.php?id="]');
+                if (owner) {
+                    let msg = createElement('a');
+                    msg.href = '/sms-create.php?mailto=' + encodeURIComponent(owner.textContent)
+                        + "#" + encodeURIComponent(tbl[ii].rows[2].textContent.trim());
+                    msg.innerHTML = '\u2709';
+                    msg.style = 'text-decoration: none; font-size: large; margin-left: 1rem;';
+                    msg.title = 'Написать письмо владельцу';
+                    tbl[ii].rows[2].firstChild.appendChild(msg);
+                }
+                else {
+                    log('There is no owner');
+                }
+            }
+            else {
+                //do something with new mod table
+            }
+        }
+        else {
+            log('Unsupported table');
+        }
+    }
+    
+}
+
 wmt_ph.process = function () {
     wmt_ph.all.forEach(function (ph) { ph.process(document); });
 }
@@ -7889,7 +7920,8 @@ wmt_ph.all = [
     new wmt_ph(/search\.php/, wmt_ph.setupSearch),
     new wmt_ph(/sms\.php/, wmt_ph.setupSms),
     new wmt_ph(/transfer\.php/, wmt_ph.setupTransfer),
-    new wmt_ph(/el_transfer\.php/, wmt_ph.setupElTransfer)
+    new wmt_ph(/el_transfer\.php/, wmt_ph.setupElTransfer),
+    new wmt_ph(/mod_workbench\.php/, wmt_ph.setupModWorkbench)
 ];
 
 
