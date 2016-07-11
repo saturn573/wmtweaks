@@ -9,7 +9,7 @@
 // @exclude http://*.heroeswm.ru/chatpost.php
 // @exclude http://*.heroeswm.ru/ch_box.php
 // @exclude http://*.heroeswm.ru/chat.php*
-// @version 1
+// @version 1.01
 // @grant GM_log
 // @grant GM_getValue
 // @grant GM_setValue
@@ -7795,11 +7795,46 @@ wmt_ph.setupSms = function() {
 }
 
 wmt_ph.setupTransfer = function () {    
-    if (location.hash) {
-        log('location.hash: ' + location.hash);
-        let inputs = ['nick', 'desc', 'gold', 'wood', 'ore', 'mercury', '']
+    if (location.hash) {        
+        let inputs = ['nick', 'desc', 'gold']
         var hashParam = decodeURIComponent(location.hash).substring(1).split('|');
         for (var ii = 0; ii < hashParam.length; ii++) {
+            if (!hashParam[ii]) continue;
+            if (inputs.length > ii) {
+                let inp = document.querySelector('input[name="' + inputs[ii] + '"]');
+                if (inp) {
+                    inp.value = hashParam[ii];                    
+                }
+                else {
+                    log('Can not find input with the name "' + inputs[ii] + '"');
+                }
+            }
+            else {
+                log('Unsupported hash param #' + ii);
+            }            
+        }
+    }
+
+    let eltr = document.querySelector('form[name="f"] a[href*="el_transfer.php"]');
+    let nick = document.querySelector('form[name="f"] input[name="nick"]');
+    if (eltr && nick) {
+        eltr.updateHref = () => { eltr.href = '\el_transfer.php#' + nick.value; }
+        eltr.updateHref();
+        nick.addEventListener('keyup', () => eltr.updateHref());
+        nick.addEventListener('change', () => eltr.updateHref())
+    }
+}
+
+wmt_ph.setupElTransfer = function () {
+    let sendType = document.querySelector('input[name="sendtype"][value="1"]');
+    if (sendType) {
+        sendType.setAttribute('checked', "true");        
+    }
+
+    if (location.hash) {
+        let inputs = ['nick', 'comment', 'gold']
+        var hashParam = decodeURIComponent(location.hash).substring(1).split('|');
+        for (let ii = 0; ii < hashParam.length; ii++) {
             if (!hashParam[ii]) continue;
             if (inputs.length > ii) {
                 let inp = document.querySelector('input[name="' + inputs[ii] + '"]');
@@ -7812,10 +7847,9 @@ wmt_ph.setupTransfer = function () {
             }
             else {
                 log('Unsupported hash param #' + ii);
-            }            
+            }
         }
     }
-    
 }
 wmt_ph.process = function () {
     wmt_ph.all.forEach(function (ph) { ph.process(document); });
@@ -7854,7 +7888,8 @@ wmt_ph.all = [
 	new wmt_ph(/plstats_merc\.php/, wmt_ph.setupPlstatsMerc),
     new wmt_ph(/search\.php/, wmt_ph.setupSearch),
     new wmt_ph(/sms\.php/, wmt_ph.setupSms),
-    new wmt_ph(/transfer\.php/, wmt_ph.setupTransfer)
+    new wmt_ph(/transfer\.php/, wmt_ph.setupTransfer),
+    new wmt_ph(/el_transfer\.php/, wmt_ph.setupElTransfer)
 ];
 
 
