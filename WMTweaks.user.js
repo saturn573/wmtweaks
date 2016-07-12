@@ -7890,14 +7890,32 @@ wmt_ph.setupModWorkbench = function () {
     for (let ii = 0; ii < tbl.length; ii++) {
         if (tbl[ii].rows.length == 3) {
             if (/Завершение\sработы:/.test(tbl[ii].rows[2].textContent)) {
+                let mod = tbl[ii].querySelector('font[color="gray"]');
                 let owner = tbl[ii].querySelector('a.pi[href*="pl_info.php?id="]');
-                if (owner) {
+                if (mod && owner) {
+                    let endDate = tbl[ii].rows[2].textContent.substring(tbl[ii].rows[2].textContent.indexOf(':')).trim();
+
+                    let modText = encodeURIComponent(mod.textContent.trim());                    
+                    let modImg = tbl[ii].querySelector('img[src*="i/mods/"][title*="' + decodeURIComponent(modText) + '"]');
+                    if (modImg) {
+                        let m = /(\S\d+)\.gif/.exec(modImg.src);
+                        if (m) {
+                            modText = "Завершение установки модификатора " + m[1] + endDate;
+                        }
+                        else {
+                            log('unexpected image');
+                        }
+                    }
+                    else {
+                        log('no mod img');
+                    }
+
                     let msg = createElement('a');
                     msg.href = '/sms-create.php?mailto=' + encodeURIComponent(owner.textContent)
-                        + "#" + encodeURIComponent(tbl[ii].rows[2].textContent.trim());
+                        + "#" + modText;
                     msg.innerHTML = '\u2709';
                     msg.style = 'text-decoration: none; font-size: large; margin-left: 1rem;';
-                    msg.title = 'Написать письмо владельцу';
+                    msg.title = 'Написать письмо-уведомление владельцу';
                     tbl[ii].rows[2].firstChild.appendChild(msg);
                 }
                 else {
