@@ -1,4 +1,4 @@
-// ==UserScript==
+﻿// ==UserScript==
 // @name WMTweaks
 // @include http://178.248.235.15/*
 // @include http://*.heroeswm.ru/*
@@ -5341,12 +5341,18 @@ wmt_ph.setupArtInfo = function () {
         let imgSize = 200;
         let elSize = 20;
         let elCount = 5;
-        tbl.rows[0].cells[0].firstChild.height = imgSize - elSize;
-        tbl.rows[1].cells[0].firstChild.height = elSize;
-        tbl.rows[1].cells[0].firstChild.width = imgSize - (elSize * elCount);
+	let efRow = tbl.rows[tbl.rows.length - 1];
+        let fillRow = efRow.previousSibling;
+	
+
+        fillRow.cells[0].firstChild.height = imgSize - elSize
+		- (tbl.rows.length > 2 ? 20 : 0);
+
+        efRow.cells[0].firstChild.height = elSize;
+        efRow.cells[0].firstChild.width = imgSize - (elSize * elCount);
         for (let ii = 1; ii <= elCount; ii++) {
-            tbl.rows[1].cells[ii].firstChild.width = elSize;
-            tbl.rows[1].cells[ii].firstChild.height = elSize;
+            efRow.cells[ii].firstChild.width = elSize;
+            efRow.cells[ii].firstChild.height = elSize;
         }
     }
     /*Тут можно пристроить оптислом*/
