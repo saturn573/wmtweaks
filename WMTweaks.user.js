@@ -175,8 +175,36 @@ Settings.getStorageKey = function () {
     return "Settings";
 }
 
+
 /*factions*/
-function wmt_Faction() {}
+function wmt_Faction() { }
+wmt_Faction.level = [
+    [0, 0, 0, 0],
+    [20, 0, 1, 0],
+    [50, 1, 0, 0],
+    [90, 0, 0, 1],
+    [160, 1, 0, 1],
+    [280, 0, 1, 1],
+    [500, 0, 0, 2],
+    [900, 0, 2, 1],
+    [1600, 2, 0, 1],
+    [2900, 2, 2, 1],
+    [5300, 2, 2, 2],
+    [9600, 2, 3, 2],
+    [17300, 3, 2, 2]    
+];
+/*Returns an array of summary bonuses from faction level.
+ Values order is attack, defence, initiative*/
+wmt_Faction.getLevelBonus = function(lvl){
+    let result = [0, 0, 0];
+    for (let l = lvl; l > 0; l--) {
+        let bon = wmt_Faction.level[l];
+        for (let ii = 0; ii < result.length; ii++) {
+            result[ii] += bon[ii + 1];
+        }
+    }
+    return result;
+}
 wmt_Faction.items = [
 	[1, 0, 'рыцарь', 'рыцари', 'рыцаря', 'рыцарей'],
 	[1, 1, 'рыцарь света', 'рыцари света', 'рыцаря света', 'рыцарей света'],
@@ -197,7 +225,17 @@ wmt_Faction.items = [
 	[9, 0, 'степной варвар', 'степные варвары', 'степного варвара', 'степных варваров'],
 ];
 wmt_Faction.getIconUrl = function(f, c) { 
-	return 'http://dcdn.heroeswm.ru/i/r' + (f + (100 * c)) + '.gif';
+    return 'http://dcdn.heroeswm.ru/i/r' + (f + (100 * c)) + '.gif';
+}
+wmt_Faction.parse = function (src) {
+    let m;
+    if (src && (m = /r(\d+)\.gif/.exec(src))) {
+        let raceCode = parseInt(m[1]);
+        return { f: raceCode % 100, c: Math.round(raceCode / 100) };
+    }
+    else {
+        log('The race image source is unexpected: ' + src);
+    }
 }
 /* 
  * Returns the name of faction
@@ -1460,8 +1498,10 @@ wmt_hero.prototype = {
     faction: undefined,
     /*Класс*/
     altclass: undefined,
+    /*Анти умения*/
+    anti: undefined,
     /*Навыки*/
-    perks: [],
+    perks: undefined,
     /*Армия*/
     army: undefined,
     /*Гильдии*/
@@ -1473,6 +1513,7 @@ wmt_hero.prototype = {
     update: function () { Storage.update(this); },
     store: function () { Storage.store(this); }
 }
+
 /*Информация о навыке*/
 function wmt_perk(code, name, desc){
 	this.code = code;
@@ -2151,10 +2192,16 @@ wmt_Sound.beep = function(frequency, delay, duration, gain) {
 function decodeCP1251(s) {
     return s.replace(/%([0-9A-F]{2})/gi, function (m) {
         var c = parseInt(m.substring(1), 16);
-        if (c >= 0xC0 && c <= 0xFF) {
+        if (c >= 0xC0 && c <= 0xFF) {            
             return String.fromCharCode(0x350 + c);
         }
-        else {
+        else if (c == 0xB8) {            
+            return String.fromCharCode(0x451);//'ё';
+        }
+        else if (c ==0xA8) {
+            return String.fromCharCode(0x401);//'Ё';
+        }
+        else {            
             return decodeURIComponent(m);
         }
     })    
@@ -2167,6 +2214,17 @@ function createElement(tagName, className) {
         result.className = className;
     }
     return result;
+}
+
+function insertAfter(node, target) {
+    if (target && target.parentNode) {
+        if (target.nextSibling) {
+            target.parentNode.insertBefore(node, target.nextSibling);
+        }
+        else {
+            target.parentNode.appendChild(node);
+        }
+    }
 }
 
 /*document.createTextNode*/
@@ -3434,6 +3492,17 @@ function getObjectId(href) {
     }
 }
 
+function getRaceImg(node) {
+    if (node && node.querySelector) {
+        return node.querySelector(
+'table.wblight b>img[src*="i/r"][title][width="15"][height="15"][align="absmiddle"]');
+    }
+    else {
+        log('Incorrect race img root node');
+    }
+}
+
+
 /*Извлекает информацию о умениях фракций и уровне гильдий*/
 function getFactionsAndGuildsInfo(xmlDoc) {
     if (xmlDoc) {
@@ -3456,9 +3525,8 @@ function getFactionsAndGuildsInfo(xmlDoc) {
                     score: infoMatch[3],
                     lost: infoMatch[4]
                 };
-            }
+            }            
             return result;
-            log(JSON.stringify(result));
         }
         else {
             log('Selector "div#mod_guild" has not result');
@@ -4695,6 +4763,7 @@ wmt_ph.processObjectDo = function (xmlDoc) {
     }
     OwnInfo.store();
 }
+
 wmt_ph.processPlayerInfo = function (xmlDoc, href) {
     if (href == undefined && xmlDoc.location != undefined) {
         href = xmlDoc.location.href;
@@ -4712,6 +4781,31 @@ wmt_ph.processPlayerInfo = function (xmlDoc, href) {
     var h = new wmt_hero(id);
     h.update();
     h.actualTime = getCurrentTime();
+
+    //race
+    let raceImg = getRaceImg(xmlDoc);
+    if (raceImg) {
+        let fc = wmt_Faction.parse(raceImg.src);
+        if (fc) {
+            h.faction = fc.f;
+            h.altclass = fc.c;
+        }        
+    }
+    else {
+        log('Race img is not found');
+    }
+
+    /*factions, guilds*/    
+    let gf = getFactionsAndGuildsInfo(xmlDoc);
+    h.anti = undefined;
+    if (gf) {
+        h.anti = [];
+        for (var key in gf) {
+            if (!~key.indexOf('гильдия')){
+                h.anti.push(gf[key].level);
+            }
+        }
+    }
 
     /*perks*/
     h.perks = undefined;
@@ -4734,6 +4828,7 @@ wmt_ph.processPlayerInfo = function (xmlDoc, href) {
     }
     h.store();
 }
+
 wmt_ph.setupPlayerInfo = function () {
     var pid = getPlayerId(location.href);
     if (pid == undefined) {
@@ -4792,7 +4887,42 @@ wmt_ph.setupPlayerInfo = function () {
 
     var hero = new wmt_hero(pid);
     hero.update();
-
+    
+    let raceImg = getRaceImg(document);
+    if (raceImg) {
+        let fl;
+        if (hero.anti && hero.faction != undefined) {
+            fl = hero.anti[hero.faction - 1];            
+        }
+        if (fl) {
+            let flSup = createElement('sup');
+            flSup.innerHTML = fl;
+            if (pid != wmt_page.playerId) {
+                let me = new wmt_hero(wmt_page.playerId);
+                me.update();
+                if (me.faction != undefined) {
+                    flSup.innerHTML += ' - ' + hero.anti[me.faction - 1];
+                }
+            }
+            insertAfter(flSup, raceImg);
+            let fb = wmt_Faction.getLevelBonus(fl);
+            if (fb) {
+                let img = ['attack', 'defence', 'initiative'];
+                for (let ii = 0; ii < img.length; ii++) {
+                    if (fb[ii]) {
+                        let im = document.querySelector('img[src*="/i/s_' + img[ii] + '.gif"]');
+                        if (im) {
+                            let b = im.parentNode.nextSibling.firstChild;
+                            if (b) {
+                                b.title = 'Бонус умения фракции: +' + fb[ii];
+                            }                            
+                        }
+                    }                    
+                }
+            }
+        }
+    }
+    
     /*quick perks*/
     if (hero.perks) {
         addStyle('.wmt-pli-perks { margin-top: 0.2em; } .wmt-pli-perks>div:first-child { float: left; }\
@@ -4823,12 +4953,14 @@ wmt_ph.setupPlayerInfo = function () {
         }
 
         for (var branch in hero.perks) {
-            log(branch);
-            if (pc[branch] == undefined) { log('unexpected branch: ' + branch); continue; }
+            //log(branch);
+            if (pc[branch] == undefined) {
+                log('unexpected branch: ' + branch);
+                continue;
+            }
             var bd = createElement('div', 'wmt-pli-bd');
 
-            for (var ii = 0; ii < hero.perks[branch].length; ii++) {
-				
+            for (var ii = 0; ii < hero.perks[branch].length; ii++) {				
                 var pb = createElement('a');
                 pb.href = 'http://www.heroeswm.ru/showperkinfo.php?name=' + hero.perks[branch][ii].code;
                 pb.style.backgroundColor = pc[branch];
@@ -4859,7 +4991,7 @@ wmt_ph.setupPlayerInfo = function () {
         }
     }
 
-
+    
 
 
 
