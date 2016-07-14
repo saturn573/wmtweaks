@@ -3465,22 +3465,22 @@ function getFactionsAndGuildsInfo(xmlDoc) {
 }
 
 /*Создает комплексную ссылку на бой*/
-function createBattleLink(warId, text) {
+function createBattleLink(warId, text, sfa) {
     var cLink = createElement('a', 'wmt-battle-chat');
-    cLink.href = '/battlechat.php?warid=' + warId;
+    cLink.href = '/battlechat.php?warid=' + warId/* + sfa*/;    //тут sfa пока не трэба
     //\uD83D\uDCAC 
     cLink.appendChild(createTextNode('\ud83c\udfb6'));
     cLink.title = 'Запись переговоров';
     cLink.target = '_blank';
 
     var sLink = createElement('a', '');
-    sLink.href = '/warlog.php?lt=-1&warid=' + warId;
+    sLink.href = '/warlog.php?lt=-1&warid=' + warId + sfa;
     sLink.appendChild(createTextNode('#' + warId));
     sLink.title = 'Смотреть c начала';
     sLink.target = '_blank';
 
     var rLink = createElement('a', 'wmt-battle-result');
-    rLink.href = '/battle.php?lastturn=-1&warid=' + warId;
+    rLink.href = '/battle.php?lastturn=-1&warid=' + warId + sfa;
     rLink.appendChild(createTextNode("\uD83C\uDFC6"));
     rLink.title = 'Показать результаты';
     rLink.target = '_blank';
@@ -3525,6 +3525,16 @@ function getWarId(href) {
         var m = /warid=(\d+)/.exec(href);
         if (m) {
             return m[1];
+        }
+    }
+}
+
+/*Возвращает параметр show_for_all*/
+function getShowForAll(href) {
+    if (href) {
+        var m = /&show_for_all=\w+/.exec(href);
+        if (m) {
+            return m[0];
         }
     }
 }
@@ -5181,7 +5191,9 @@ wmt_ph.setupWarlog = function () {
             td = fl.parentNode;
             pc = td.firstChild;
         }
-        
+
+        //&show_for_all=\w+
+
         var selfLinks = td.querySelectorAll('a[href*="pl_info.php?id=' + wmt_page.playerId + '"]');
         if (selfLinks && selfLinks.length > 1) {
             for (var ii = 1; ii < selfLinks.length; ii++) {
@@ -5256,7 +5268,7 @@ wmt_ph.setupWarlog = function () {
                             insertDayRow(date.Month, date.Day);
                         }
 
-                        var warId = getWarId(n.href);
+                        var warId = getWarId(n.href);                        
                         var type = '';
                         var t = arr[kk + 1];
                         if (t.nodeType == 3 && ~t.nodeValue.indexOf(':')) {
@@ -5275,7 +5287,7 @@ wmt_ph.setupWarlog = function () {
                         }
 
                         c1.appendChild(createTextNode(date.Time));
-                        c2.appendChild(createBattleLink(warId, ''));
+                        c2.appendChild(createBattleLink(warId, '', getShowForAll(n.href)));
                         c3.appendChild(createTextNode(type));
                     }
                     else {
@@ -5844,7 +5856,7 @@ wmt_ph.setupTavern = function () {
     
 
     var firstGameRowIndex = 2;
-    /*Форма создания заявки и ожидание подтверждения бобавляются первой строкой*/
+    /*Форма создания заявки и ожидание подтверждения добавляются первой строкой*/
     var creatingGame = ~location.href.indexOf('form=1');
     var inBattle = bigTable.querySelector('tbody>tr:first-child>td:first-child>font[color="red"]>b');
     var waitConfirmation = bigTable.querySelector('a[href*="cancel_card_game.php"]');
@@ -5983,11 +5995,13 @@ wmt_ph.setupTavern = function () {
                 joinLink: row.cells[row.cells.length - 1].querySelector('a[href*="join_to_card_game.php?id="]'),
                 bet: row.cells[row.cells.length - 2].textContent.replace(/,/g, ''),
                 timeout: parseInt(row.cells[row.cells.length - 3].textContent),
+                /*WARNING*/
                 oneDeck: row.cells[row.cells.length - 4].querySelector('img[src*="1koloda"]') != undefined,
                 initiatorLink: row.cells[row.cells.length - 5].querySelector('a[href*="pl_info.php?id="]'),
                 initiatorLevel: parseInt(row.cells[row.cells.length - 5].querySelector('i').textContent.replace(/[\(\)]/g, '')),
                 sector: Map.getSectorByName(row.cells[row.cells.length - 6].textContent)
             };
+
             if (result.initiatorLink)
             {
                 result.initiatorId = getPlayerId(result.initiatorLink.href);
@@ -6045,12 +6059,12 @@ wmt_ph.setupTavern = function () {
             }
 
             /*Check deck*/
-            if (gc.oneDeck) {
-                if (this.oneDeckEnable == false && this.infinityDeckEnable == true) {
+            if (gc.oneDeck) {                
+                if (!this.oneDeckEnable && this.infinityDeckEnable) {
                     return false;
                 }
             }
-            else if (this.infinityDeckEnable == false && this.oneDeckEnable == true) {
+            else if (!this.infinityDeckEnable && this.oneDeckEnable) {
                 return false;
             }
 
