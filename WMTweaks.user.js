@@ -2668,7 +2668,9 @@ function getMenuItems() {
     });	
 	/*Castle*/
 	result.push({
-		Title: '\uD83C\uDFF0', Href: 'castle.php', Items: [
+	    Title: '\uD83C\uDFF0', Href: 'castle.php', Items: [
+            { Title: '\u0423\u043B\u0443\u0447\u0448\u0435\u043D\u0438\u0435', Href: 'mod_workbench.php' },
+            { Title: '\u0420\u0435\u043C\u043E\u043D\u0442', Href: 'mod_workbench.php?type=repair' },
 			{ Title: '\u0410\u0440\u0442\u0435\u0444\u0430\u043A\u0442\u044B\u00A0\u0441\u0443\u0449\u0435\u0441\u0442\u0432', Href: 'arts_for_monsters.php' }
 		]
 	});
