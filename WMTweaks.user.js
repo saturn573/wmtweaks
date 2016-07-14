@@ -3466,6 +3466,9 @@ function getFactionsAndGuildsInfo(xmlDoc) {
 
 /*Создает комплексную ссылку на бой*/
 function createBattleLink(warId, text, sfa) {
+    if (!sfa) {
+        sfa = '';
+    }
     var cLink = createElement('a', 'wmt-battle-chat');
     cLink.href = '/battlechat.php?warid=' + warId/* + sfa*/;    //тут sfa пока не трэба
     //\uD83D\uDCAC 
@@ -5160,7 +5163,7 @@ wmt_ph.setupForumMessages = function () {
         var m = /warid=(\d+)/.exec(bLink.href);
         if (m) {
             var warId = m[1];
-            bLink.parentNode.insertBefore(createBattleLink(warId), bLink);
+            bLink.parentNode.insertBefore(createBattleLink(warId, '', getShowForAll(bLink.href)), bLink);
             bLink.parentNode.removeChild(bLink);
         }
     }
