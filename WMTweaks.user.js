@@ -4896,20 +4896,38 @@ wmt_ph.setupPlayerInfo = function () {
         }
         if (fl) {
             let flSup = createElement('sup');
+            flSup.style = 'white-space: nowrap';
+            flSup.title = 'Умение фракции ' + wmt_Faction.getName(hero.faction, 0, 2) + ' ' + fl + '.';
             flSup.innerHTML = fl;
             if (pid != wmt_page.playerId) {
                 let me = new wmt_hero(wmt_page.playerId);
                 me.update();
                 if (me.faction != undefined) {
-                    flSup.innerHTML += ' - ' + hero.anti[me.faction - 1];
+                    let antiSp = createElement('span');
+                    antiSp.innerHTML = ' - ' + hero.anti[me.faction - 1];
+                    antiSp.title = 'Антиумение ' + wmt_Faction.getName(me.faction, 0, 2) + ' - cнижение урона: +' + hero.anti[me.faction - 1]*3 + '%';
+                    flSup.appendChild(antiSp);
                 }
             }
             insertAfter(flSup, raceImg);
             let fb = wmt_Faction.getLevelBonus(fl);
             if (fb) {
+                flSup.title += '\r\nБонус: ';
                 let img = ['attack', 'defence', 'initiative'];
                 for (let ii = 0; ii < img.length; ii++) {
                     if (fb[ii]) {
+                        switch (ii) {
+                            case 0:
+                                flSup.title += ' нападение + ' + fb[ii];
+                                break;
+                            case 1:
+                                flSup.title += ' защита +' + fb[ii];
+                                break;
+                            case 2:
+                                flSup.title += ' инициатива +' + fb[ii] + '%';
+                                break;
+                        }                       
+
                         let im = document.querySelector('img[src*="/i/s_' + img[ii] + '.gif"]');
                         if (im) {
                             let b = im.parentNode.nextSibling.firstChild;
