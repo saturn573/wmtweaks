@@ -1481,6 +1481,27 @@ wmt_item.prototype = {
 	}
 };
 
+/* Условия сдачи в аренду предмета*/
+function wmt_item_rent(id) {
+	this.id = id;
+}
+wmt_item_rent.prototype = {
+	/*идентификатор группы или конкретного предмета*/
+	id: undefined,
+	/*Цена*/
+	value: undefined,
+	getStorageKey: function() {
+		return 'wmt_item_rent' + this.id;
+	},
+	update: function() {
+		Storage.update(this);		
+	},
+	store: function() {
+		Storage.store(this);
+	}	
+}
+
+
 /*Информация о персонаже*/
 function wmt_hero(id) {
     this.id = id;
@@ -7032,9 +7053,48 @@ wmt_ph.setupInventory = function () {
 .wmt-inv-pf { position: absolute; top: 15em; left: 15em; z-index: 102;  background-color: white; border-style: outset; border-color: yellow; border-width: 3px;  }\
 .wmt-inv-pfb { min-width: 8em; margin: 5px; }\
 .wmt-inv-pfc { width: 5em; margin-left: 5px; margin-right: 15px; text-align: right; }\
-.wmt-inv-pfr { width: 4em; margin-left: 5px; text-align: center; }');
-
-    /*For executing native scripts*/
+.wmt-inv-pfr { width: 4em; margin-left: 5px; text-align: center; }\
+.wmt-inv-arenda-item { background: #d7edd4; }\
+.wmt-inv-arenda-cb { transform: scale(1.3); margin-left: -0.2rem; margin-right: 0.3rem; }\
+.wmt-inv-arenda-cb:checked { transform: scale(2); }\
+.wmt-inv-arenda-price { display: block; text-align: center; text-decoration: underline; cursor: pointer; }\
+.wmt-inv-arenda-price:hover { transform: scale(1.1); }\
+.wmt-inv-arenda-div { display: none; font-size: large; }\
+.wmt-inv-arenda-recipient { margin: 1rem; font-size: inherit; width: 15rem; }\
+.wmt-inv-arenda-bc {  width: 3rem; text-align: center; font-size: inherit; -moz-user-select: none; }\
+.wmt-inv-arenda-bc:hover {  transform: scale(1.2); width: 4rem; }\
+.wmt-inv-arenda-send { margin-left: 1rem; font-size: inherit; }');
+	
+	let updateRentDivVisibility = function() {
+		let rentDiv = document.querySelector('div.wmt-inv-arenda-div');
+		if (rentDiv) {
+			let ch = document.querySelectorAll('input.wmt-inv-arenda-cb:checked');
+			if (ch.length) {
+				rentDiv.style.display = 'block';
+				rentDiv.firstChild.focus();
+				let bc = document.querySelector('.wmt-inv-arenda-bc');
+				let min = 99;
+				for (let ii = 0; ii < ch.length; ii++) {					
+					if (ch[ii].checked 
+						&& ch[ii].maxCount < min) {
+						min = ch[ii].maxCount;						
+					}
+				}
+				if (bc.value > min) {
+					bc.value = min;
+				}
+				bc.max = min;
+			}
+			else {
+				rentDiv.style.display = 'none';
+			}
+			
+			
+		}
+	}
+	
+	
+	/*For executing native scripts*/
     var delay = 500;
 
     /*Изменение категории*/
@@ -7101,6 +7161,78 @@ wmt_ph.setupInventory = function () {
         }
     }
 
+	let setupArendaItem = function(sl){
+		let uid = /id=(\d+)/.exec(sl.href)[1];
+		
+		let uidPrice = new wmt_item_rent(uid);
+		uidPrice.update();
+		
+		let table = getNthParentNode(sl, 5);
+		table.className = 'wmt-inv-arenda-item';
+		
+		let itemLink = table.querySelector('a[href*="art_info.php?id="]');
+		if (!itemLink) {
+			return;
+		}
+		
+		let artId = getArtifactId(itemLink.href);
+		if (!artId) {
+			return;
+		}
+		
+		let maxCount = /(\d+)\/\d+/.exec(sl.parentNode.previousSibling.textContent)[1];
+		
+		let groupPrice = new wmt_item_rent(artId);		
+		groupPrice.update();
+		
+		let price = createElement('span', 'wmt-inv-arenda-price');
+		if (uidPrice.value) {			
+			price.innerHTML = '\u2460' + uidPrice.value;
+			price.style.color = 'blue';
+			price.title = 'Цена боя для сдачи в аренду именно этого предмета';
+			price.value = uidPrice;
+		}
+		else if (groupPrice.value) {			
+			price.innerHTML = '\u2460' + groupPrice.value;
+			price.style.color = 'green';
+			price.title = 'Цена боя для сдачи в аренду всех таких предметов';
+			price.value = groupPrice;
+		}
+		else {
+			price.innerHTML = 'Цена?';	
+			price.style.color = 'red';
+			price.title = 'Задать стоимость боя для сдачи в аренду';
+		}			
+			
+		table.rows[0].cells[0].appendChild(price);
+		
+		let checkBox = createElement('input', 'wmt-inv-arenda-cb');
+		checkBox.type = 'checkbox';
+		checkBox.uid = uid;
+		checkBox.maxCount = parseInt(maxCount);
+		checkBox.price = price.value;
+		checkBox.addEventListener('change', updateRentDivVisibility);
+		itemLink.parentNode.insertBefore(checkBox, itemLink);
+		checkBox.disabled = !uidPrice.value && !groupPrice.value;
+		
+		
+		price.addEventListener('click', function() {
+			let newPrice = parseInt(prompt('Введите стоимость боя'));
+			if (newPrice) {
+				if (confirm('Использовать для всех таких предметов?')) {
+					groupPrice.value = newPrice;
+					uidPrice.value = undefined;
+				}
+				else {
+					groupPrice.value = undefined;
+					uidPrice.value = newPrice;
+				}
+				groupPrice.store();
+				uidPrice.store();
+			}
+		});
+	}
+	
     var prepareItems = function () {
         var ul = document.querySelectorAll('a[onclick*="try_undress"]');
         for (var ii = 0; ii < ul.length; ii++) {
@@ -7114,6 +7246,10 @@ wmt_ph.setupInventory = function () {
             dl[ii].removeAttribute('onclick');
             dl[ii].onclick = function () { if (this.m) { c(this.m[1]); } };
         }
+		var sl = document.querySelectorAll('a[href*="art_transfer.php?id="]');
+		for (var ii = 0; ii < sl.length; ii++) {
+			setupArendaItem(sl[ii]);
+		}
 
         var drops = document.querySelectorAll('a[href*="inventory.php?sell="]');
         for (var ii = 0; ii < drops.length; ii++) {
@@ -7341,7 +7477,119 @@ wmt_ph.setupInventory = function () {
         }
     }
 
+	let recipient = createElement('input', 'wmt-inv-arenda-recipient');
+	recipient.placeholder = 'Введите имя получателя';
+	
+		
+	let bCount = createElement('input', 'wmt-inv-arenda-bc');
+	bCount.type = 'number';
+	bCount.value = 1;
+	bCount.min = 1;
+	bCount.max = 99;
+	bCount.title = 'Количество боев';
+	/*bCount.addEventListener('dblclick', () => {
+		bCount.value = parseInt(bCount.value) + 1;
+	})*/
 
+	let sendCheckedItem = function() {
+		let cb;
+		let cbAll = document.querySelectorAll('input.wmt-inv-arenda-cb');
+		for (let ii = 0; ii < cbAll.length; ii++) {
+			if (cbAll[ii].checked) {
+				cb = cbAll[ii];				
+				cbAll[ii].checked = false;				
+				break;
+			}
+		}
+		
+		if (!cb) {
+			location.reload();
+			return;
+		}
+		
+		var trans=[];
+		var snart=[];
+		for(var i=0x410;i<=0x44F;i++)
+		{
+			trans[i]=i-0x350;
+			snart[i-0x350] = i;
+		}
+		trans[0x401]= 0xA8;
+		trans[0x451]= 0xB8;
+		snart[0xA8] = 0x401;
+		snart[0xB8] = 0x451;
+		let urlencode = function(str)
+		{
+			var ret=[];
+			for(var i=0;i<str.length;i++)
+			{
+				var n=str.charCodeAt(i);
+				if(typeof trans[n]!='undefined')
+				n = trans[n];
+				if (n <= 0xFF)
+				ret.push(n);
+			}
+
+			return escape(String.fromCharCode.apply(null,ret));
+		}
+
+		
+		let data = 'id=' + cb.uid 
+		
+		+ '&nick=' + urlencode(recipient.value.trim()) 
+		+ '&gold=' + cb.price.value * bCount.value
+		+ '&wood=0&ore=0&mercury=0&sulphur=0&crystal=0&gem=0&sendtype=2'
+		+ '&dtime=' + (parseInt(bCount.value) * 0.05)
+		+ '&bcount=' + bCount.value 
+		+ '&art_id=&sign=' + OwnInfo.transferSign;
+		log(data);
+		GM_xmlhttpRequest({
+			method: 'POST',
+			url: '/art_transfer.php',
+			data: data,
+			onload: (r) => {
+				log(r.readyState);
+				setTimeout(sendCheckedItem, 500); 
+			},
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded"
+			},
+            overrideMimeType: 'text/html;charset=windows-1251'
+		});		
+	}
+	
+	let sendSelected = function () {
+		sendCheckedItem();
+	}	
+	
+	let rentBtn = createElement('button', 'wmt-inv-arenda-send');
+	rentBtn.innerHTML = 'Сдать в аренду';
+	rentBtn.disabled = true;
+	rentBtn.addEventListener('click', sendSelected);
+		
+	let arendaDiv = createElement('div', 'wmt-inv-arenda-div');
+	
+	arendaDiv.appendChild(recipient);
+	arendaDiv.appendChild(createTextNode('#'));
+	arendaDiv.appendChild(bCount);
+	arendaDiv.appendChild(rentBtn);
+	
+	recipient.oninput = function() {
+		rentBtn.disabled = !recipient.value.trim();
+		let nick =  /javascript:void\(top\.sendto\('([^']+)'\)\)/.exec(recipient.value)[1];
+		if (nick) {
+			recipient.value = decodeURIComponent(nick);
+		}
+	}
+/*	addEventListener('input', () => { 
+		rentBtn.disabled = !recipient.vakue.trim(); 
+	});*/
+	
+	let test = document.querySelector('div#test');
+	if (test) {	
+		test.parentNode.insertBefore(arendaDiv, test);
+	}
+	
     updateItems();
 }
 wmt_ph.processInventory = function (xmlDoc) {
