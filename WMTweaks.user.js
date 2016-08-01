@@ -2579,7 +2579,7 @@ function wmt_updatechatlines(l) {
 				wmt_hidden_list.push(helper.row.msg_id);
 				helper.row.className += ' hidden';
 			}
-			
+			sessionStorage.setItem("wmt_chat_deletedLines", wmt_hidden_list.join('|'));
 		})
 		helper.appendChild(delLine);
 		var delAuthor = document.createElement('span');
@@ -2599,7 +2599,8 @@ function wmt_updatechatlines(l) {
 			if (!isIn) {
 				wmt_black_list.push(helper.row.author);							
 			}
-			setCookie('wmtbl', wmt_black_list.join('|'), { expires: 100000 });
+			localStorage.setItem("wmt_chat_blacklist", wmt_black_list.join('|'));
+			//setCookie('wmtbl', wmt_black_list.join('|'), { expires: 100000 });
 			
 			var cb = helper.row.parentNode;
 			for (var ii = 0; ii < cb.childNodes.length; ii++) {
@@ -2616,6 +2617,7 @@ function wmt_updatechatlines(l) {
 		for (var ii = 0; ii < wmt_time.length; ii++) {
 			var row = wmt_time[ii].parentNode; 
 			row.author = wmt_time[ii].nextSibling.nextSibling.textContent;
+			row.title = row.author;
 		    row.msg_id = wmt_time[ii].firstChild.nextSibling.title;
 			var option = row.querySelector('.wmt-chat-option');
 			if (option) {
@@ -2680,20 +2682,26 @@ function setCookie(name, value, options) {
 
 /*Настройка фрейма чата*/
 function setupChat() {
-    var ignoreList = getCookie('wmtbl');
-    if (ignoreList) {
-        ignoreList = JSON.stringify(ignoreList.split('|'));
+    let ignored = localStorage.getItem('wmt_chat_blacklist');
+    if (ignored) {
+        ignored = ignored.split('|');
     }
     else {
-        ignoreList = '[]';
+        ignored = [];
+    }
+    let hidden = sessionStorage.getItem('wmt_chat_deletedLines');
+    if (hidden) {
+        hidden = hidden.split('|');
+    }
+    else {
+        hidden = [];
     }
 
     var script = createElement('script');
-    script.innerHTML = 'var wmt_hidden_list = [];\r\n var wmt_black_list = '+ ignoreList +
+    script.innerHTML = 'var wmt_hidden_list = ' + JSON.stringify( hidden) + ';\r\n var wmt_black_list = '+ JSON.stringify(ignored) +
     ';\r\n function wmt_isInArray(array, value) { for (var ii = 0; ii < array.length; ii++) {\
-    if (array[ii] === value) return true; }};\r\n' + wmt_updatechatlines.toString() + ';\r\n' + setCookie.toString() + ';\r\n';
-    
-	document.body.appendChild(script);
+    if (array[ii] === value) return true; }};\r\n' + wmt_updatechatlines.toString() + ';\r\n';
+    document.body.appendChild(script);
 	window.eval('updatechatlines = wmt_updatechatlines;');	
 }
 
@@ -3682,6 +3690,14 @@ function addSelfLinkClasses() {
     addStyle('.wmt-self-link {  }\
 .wmt-self-link-level { display: none; }\
 .wmt-self-link:hover .wmt-self-link-level { display: inline; }');
+}
+
+/*Получает ник из ссылки в чате*/
+function getChatNick(chatNick) {
+    let match = /javascript:void\(top\.sendto\('([^']+)'\)\)/.exec(chatNick);
+    if (match && match[1]) {
+        return decodeURIComponent(match[1]);
+    }
 }
 
 function getArtifactId(href) {
@@ -7059,18 +7075,18 @@ wmt_ph.setupInventory = function () {
 .wmt-inv-arenda-cb:checked { transform: scale(2); }\
 .wmt-inv-arenda-price { display: block; text-align: center; text-decoration: underline; cursor: pointer; }\
 .wmt-inv-arenda-price:hover { transform: scale(1.1); }\
-.wmt-inv-arenda-div { display: none; font-size: large; }\
+.wmt-inv-arenda-div { font-size: large; }\
 .wmt-inv-arenda-recipient { margin: 1rem; font-size: inherit; width: 15rem; }\
 .wmt-inv-arenda-bc {  width: 3rem; text-align: center; font-size: inherit; -moz-user-select: none; }\
 .wmt-inv-arenda-bc:hover {  transform: scale(1.2); width: 4rem; }\
 .wmt-inv-arenda-send { margin-left: 1rem; font-size: inherit; }');
-	
-	let updateRentDivVisibility = function() {
+
+	let updateRentDiv = function() {
 		let rentDiv = document.querySelector('div.wmt-inv-arenda-div');
 		if (rentDiv) {
 			let ch = document.querySelectorAll('input.wmt-inv-arenda-cb:checked');
 			if (ch.length) {
-				rentDiv.style.display = 'block';
+				//rentDiv.style.display = 'block';
 				rentDiv.firstChild.focus();
 				let bc = document.querySelector('.wmt-inv-arenda-bc');
 				let min = 99;
@@ -7086,32 +7102,23 @@ wmt_ph.setupInventory = function () {
 				bc.max = min;
 			}
 			else {
-				rentDiv.style.display = 'none';
-			}
-			
+				//rentDiv.style.display = 'none';
+			}			
 			
 		}
 	}
-	
-	
-	/*For executing native scripts*/
-    var delay = 500;
 
-    /*Изменение категории*/
-    var a = function (c, r) {
-        window.eval("show_arts_by_cat('" + c + "'," + r + ")");
-        setTimeout(updateItems, delay);
-    }
-
-    var b = function (id) {
-        window.eval('try_undress(' + id + ')');
-        setTimeout(updateItems, delay);
-    }
-
-    var c = function (id) {
-        window.eval('try_dress(' + id + ')');
-        setTimeout(updateItems, delay);
-    }
+    /*Встраиваем оповещение о завершении работы встроенных функций*/
+    let native_func = ['show_arts_by_cat', 'try_undress', 'try_dress', 'change_star1', 'change_star2', 'change_star3'];
+    for (let ii = 0; ii < native_func.length; ii++) {
+        let native_func_text = window.eval(native_func[ii] + '.toString();');
+        let fI = native_func_text.indexOf(native_func[ii]) + native_func[ii].length;        
+        native_func_text = native_func_text.substr(fI);
+        let change_script = native_func[ii] + ' = function ' + native_func_text;
+        let li = change_script.lastIndexOf('return');
+        change_script = change_script.substr(0, li) + "postMessage('updateItems', '*');" + change_script.substr(li);        
+        window.eval(change_script);
+    } 
 
     var doTransferToRepair = function ()
     {
@@ -7169,7 +7176,41 @@ wmt_ph.setupInventory = function () {
 		
 		let table = getNthParentNode(sl, 5);
 		table.className = 'wmt-inv-arenda-item';
+
+		let dropZone = createElement('label');
 		
+		let rng = document.createRange();
+		rng.selectNode(table);
+		rng.surroundContents(dropZone);
+
+		let noopHandler = function(evt) {
+		    evt.stopPropagation();
+		    evt.preventDefault();
+		}
+
+		let drop = function (evt) {
+		    evt.stopPropagation();
+		    evt.preventDefault();
+		    let chatNick = getChatNick(evt.dataTransfer.getData('Text'));
+		    if (chatNick) {
+		        let cb = this.querySelector('.wmt-inv-arenda-cb');
+		        if (cb) {
+		            cb.checked = true;
+		            updateRentDiv();
+		        }
+		        let rec = document.querySelector('.wmt-inv-arenda-recipient');
+		        if (rec) {
+		            rec.value = chatNick;
+		            let sbt = document.querySelector('.wmt-inv-arenda-send');
+		            if (sbt) {
+		                sbt.disabled = undefined;
+		            }
+		        }		        
+		    }
+		}
+
+		
+
 		let itemLink = table.querySelector('a[href*="art_info.php?id="]');
 		if (!itemLink) {
 			return;
@@ -7211,10 +7252,16 @@ wmt_ph.setupInventory = function () {
 		checkBox.uid = uid;
 		checkBox.maxCount = parseInt(maxCount);
 		checkBox.price = price.value;
-		checkBox.addEventListener('change', updateRentDivVisibility);
+		checkBox.addEventListener('change', updateRentDiv);
 		itemLink.parentNode.insertBefore(checkBox, itemLink);
 		checkBox.disabled = !uidPrice.value && !groupPrice.value;
 		
+		if (!checkBox.disabled) {
+		    dropZone.addEventListener('dragenter', noopHandler, false);
+		    dropZone.addEventListener('dragexit', noopHandler, false);
+		    dropZone.addEventListener('dragover', noopHandler, false);
+		    dropZone.addEventListener('drop', drop, false);
+		}
 		
 		price.addEventListener('click', function() {
 			let newPrice = parseInt(prompt('Введите стоимость боя'));
@@ -7234,33 +7281,49 @@ wmt_ph.setupInventory = function () {
 	}
 	
     var prepareItems = function () {
-        var ul = document.querySelectorAll('a[onclick*="try_undress"]');
-        for (var ii = 0; ii < ul.length; ii++) {
-            ul[ii].m = /try_undress\((\d+)\)/.exec(ul[ii].onclick.toString());
-            ul[ii].removeAttribute('onclick');
-            ul[ii].onclick = function () { if (this.m) { b(this.m[1]); } };
-        }
-        var dl = document.querySelectorAll('a[onclick*="try_dress"]');
-        for (var ii = 0; ii < dl.length; ii++) {
-            dl[ii].m = /try_dress\((\d+)\)/.exec(dl[ii].onclick.toString());
-            dl[ii].removeAttribute('onclick');
-            dl[ii].onclick = function () { if (this.m) { c(this.m[1]); } };
-        }
+        //var ul = document.querySelectorAll('a[onclick*="try_undress"]');
+        //for (var ii = 0; ii < ul.length; ii++) {
+        //    ul[ii].m = /try_undress\((\d+)\)/.exec(ul[ii].onclick.toString());
+        //    ul[ii].removeAttribute('onclick');
+        //    ul[ii].onclick = function () { if (this.m) { b(this.m[1]); } };
+        //}
+        //var dl = document.querySelectorAll('a[onclick*="try_dress"]');
+        //for (var ii = 0; ii < dl.length; ii++) {
+        //    dl[ii].m = /try_dress\((\d+)\)/.exec(dl[ii].onclick.toString());
+        //    dl[ii].removeAttribute('onclick');
+        //    dl[ii].onclick = function () { if (this.m) { c(this.m[1]); } };
+        //}
+        //let cs = document.querySelectorAll('a[onclick*="change_star"]');
+        //for (let ii = 0; ii < cs.length; ii++) {
+        //    cs[ii].m = /change_star(\d)\((\d+),\s(\d+)\)/.exec(cs[ii].onclick.toString());
+        //    cs[ii].removeAttribute('onclick');
+        //    cs[ii].onclick = function () { if (this.m) { change_star(this.m[1], this.m[2], this.m[3]); } };
+        //}
 		var sl = document.querySelectorAll('a[href*="art_transfer.php?id="]');
 		for (var ii = 0; ii < sl.length; ii++) {
 			setupArendaItem(sl[ii]);
-		}
+		}		
 
         var drops = document.querySelectorAll('a[href*="inventory.php?sell="]');
         for (var ii = 0; ii < drops.length; ii++) {
             addRepairBtn(drops[ii]);
         }
     }
-
+    let lastUpdateTime;
     var updateItems = function () {
-        prepareItems();
-        showItemsCurrentDurability();
+        if (!lastUpdateTime || (getCurrentTime() - lastUpdateTime) > 100) {
+            prepareItems();
+            showItemsCurrentDurability();
+        }
+        lastUpdateTime = getCurrentTime();        
     }
+
+    window.addEventListener('message', function (ev) {
+        if (ev.data == 'updateItems') {            
+            updateItems();
+            return true;
+        }
+    }, false);
 
     var showRepairPayForm = function (t) {
         var t = this;
@@ -7427,12 +7490,12 @@ wmt_ph.setupInventory = function () {
     };
 
     /*Prepare tabs*/
-    var ts = document.querySelectorAll('a[id*="ln"]');
-    for (var ii = 0; ii < ts.length; ii++) {
-        ts[ii].m = /show_arts_by_cat\('(\w*)',\s+(\d+)\)/.exec(ts[ii].onclick.toString());
-        ts[ii].removeAttribute('onclick');
-        ts[ii].onclick = function () { a(this.m[1], +this.m[2]); }
-    }
+    //var ts = document.querySelectorAll('a[id*="ln"]');
+    //for (var ii = 0; ii < ts.length; ii++) {
+    //    ts[ii].m = /show_arts_by_cat\('(\w*)',\s+(\d+)\)/.exec(ts[ii].onclick.toString());
+    //    ts[ii].removeAttribute('onclick');
+    //    ts[ii].onclick = function () { a(this.m[1], +this.m[2]); }
+    //}
 
     /*Prepare transfers*/
     var tr = document.querySelectorAll('a[href*="trade_cancel.php?tid="]');
@@ -7576,14 +7639,11 @@ wmt_ph.setupInventory = function () {
 	
 	recipient.oninput = function() {
 		rentBtn.disabled = !recipient.value.trim();
-		let nick =  /javascript:void\(top\.sendto\('([^']+)'\)\)/.exec(recipient.value)[1];
-		if (nick) {
-			recipient.value = decodeURIComponent(nick);
+		let chatNick =  getChatNick(recipient.value);
+		if (chatNick) {
+			recipient.value = chatNick;
 		}
 	}
-/*	addEventListener('input', () => { 
-		rentBtn.disabled = !recipient.vakue.trim(); 
-	});*/
 	
 	let test = document.querySelector('div#test');
 	if (test) {	
