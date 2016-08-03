@@ -2540,7 +2540,8 @@ function wmt_updatechatlines(l) {
             + '.wmt-chat-row { display: block; margin: 1px; }'
             + '.wmt-chat-row.hidden { opacity: 0.1; }'
             + '.wmt-chat-row.hidden:hover { opacity: 1; }'
-            + '.wmt-chat-option { cursor: pointer; margin-right: 0.3em; }</style>';
+            + '.wmt-chat-option { cursor: pointer; margin-right: 0.3em; }'
+            + '.wmt-chat-row img { height: 0.5rem; width: 0.5rem; }</style>';
 		for (var ii = ChatLines.length - 1; ii >= 0; ii--) {
 			ch_html += '<div class="wmt-chat-row">' + ChatLines[ii] + '</div>';
 		}
