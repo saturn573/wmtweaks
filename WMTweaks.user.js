@@ -55,7 +55,11 @@ var guildTimeout = {
 	/*Гильдия рабочих: 60 минут*/
     Worker: 3600000,
     /*Гильдия воров: 60 минут*/
-    Thief: 3600000 / holidayBoost,
+    Thief: 3600000,
+    /*Возвращает интервал с учетом бонусов*/
+    getThief: function () {
+        return this.Thief * (OwnInfo.premiumEnabled ? 0.7 : 1) / holidayBoost;
+    }
     /*Гильдия охотников для БУ 1-3: 5 минут*/
     //HunterLowLevel:  300000,
     /*Гильдия охотников днем: 40 минут*/
@@ -932,7 +936,7 @@ function OwnInfo() { }
 /*Актуальное время, мс*/
 OwnInfo.actualTime = undefined;
 /*Действет благословение Абу-Бекра*/
-OwnInfo.PremiumEnabled = true;
+OwnInfo.premiumEnabled = true;
 /*Дополнительный коэффициент эффективности работы*/
 OwnInfo.workEfficiencyBonusFactor = 1;
 /*Последняя работа*/
@@ -3374,7 +3378,7 @@ function createMoveSectorLink(sector) {
 
 /*Добавляет ссылку для перехода после указанной ссылки на сектор карты*/
 function insertMoveLink(mapLink) {
-    if (mapLink && OwnInfo.PremiumEnabled) {
+    if (mapLink && OwnInfo.premiumEnabled) {
         var sector = Map.getSectorByHref(mapLink.href);
         if (sector) {
             if (mapLink.nextSibling) {
@@ -3849,14 +3853,24 @@ wmt_ph.processHome = function (xmlDoc) {
                 var warId = getWarId(lastBattle.href);
                 if (OwnInfo.LastBattleId != warId) {
                     OwnInfo.LastBattleId = warId;
-                    OwnInfo.store();
                     if (Timer.getHP().isRunning()) {
-
+                        //Запрос протокола боев тут
                     }
+                }
+            }
+            var ownInfoLink = infoRow.cells[0]
+                .querySelector('center>a.pi[href*="pl_info.php?id=' + wmt_page.playerId + '"]');
+            if (ownInfoLink) {
+                let pe = ownInfoLink.parentNode
+                    .querySelector('a[href*="shop.php?cat=potions"]>img[src*="star.gif"]') != undefined;                
+                if (OwnInfo.premiumEnabled != pe) {
+                    OwnInfo.premiumEnabled = pe;
+                    
                 }
             }
         }
     }
+    OwnInfo.store();
 
     /*getFactionsAndGuildsInfo(document);*/
 }
@@ -3939,7 +3953,7 @@ wmt_ph.setupMap = function () {
 		/*Ссылка на переход в сектор ГН*/
 		if (mercenaryTargetSectorId != 0 
 			&& mercenaryTargetSectorId != currentSectorId 
-			&& OwnInfo.PremiumEnabled) {
+			&& OwnInfo.premiumEnabled) {
 			addStyle('.wmt-map-merc { display: inline-block; width: 80%; background: white; border: 1px solid black; margin-top: 1em; padding-bottom: 1em; }\
 	.wmt-map-merc>span:first-child { font-weight: bold; display: block; margin-bottom: 1em; } ');
 			var mercHead = createElement('span');
@@ -5506,37 +5520,68 @@ wmt_ph.setupWarlog = function () {
         r.insertNode(tbl);
     }
 }
-wmt_ph.processWarlog = function (xmlDoc) {
-    if (OwnInfo.LastBattleId) {
-        var lastBattleLink = xmlDoc.body.querySelector('a[href*="warlog.php?warid=' + OwnInfo.LastBattleId + '"]');
-        if (lastBattleLink) {
-            var elapsed;
-            var wd = getWarDate(lastBattleLink.textContent);
-            if (wd) {
-                var date = new Date('20' + wd.Year + '-' + wd.Month + '-' + wd.Day + 'T' + wd.Time + ':00+0300');
-                if (date) {
-                    elapsed = getCurrentTime() - date.getTime();                    
-                }
-            }
+wmt_ph.processWarlog = function (xmlDoc) {  
+    
+    let target = xmlDoc.querySelector('center>a.pi:nth-child(1)[href*="pl_info.php?id="]');
 
+    if (!target) {
+        log('The target for warlog is not found');
+        return;
+    }
 
-            var nextSibl = lastBattleLink.nextSibling;
-            if (nextSibl.nodeType == 3 && nextSibl.nodeValue == ': • ') {
-                /*Thief*/
-                var initiatorNode = nextSibl.nextSibling;
-                if (initiatorNode.href && ~initiatorNode.href.indexOf('pl_info.php?id=' + wmt_page.playerId))
-                {
-                    if (!Timer.getThief().isRunning() && guildTimeout.Thief > elapsed) {
-                        OwnInfo.update();
-                        OwnInfo.Thief.Time = getCurrentTime();
-                        OwnInfo.Thief.Interval = guildTimeout.Thief - elapsed;
-                        OwnInfo.store();
-                    }
-                }
-            }
+    let isMine = target.href.indexOf('pl_info.php?id=' + wmt_page.playerId) != -1;
+    if (isMine) {
+        
+        OwnInfo.update();
+    }    
 
+    let btl = xmlDoc.body.querySelectorAll('a[href*="warlog.php?warid=');
+    for (let ii = 0; ii < btl.length; ii++) {        
+        let type = btl[ii].nextSibling;        
+        if (isMine
+            && ~type.nodeValue.indexOf('•')) {
+            let thief = type.nextSibling;
             
+            if (!thief.href && thief.firstChild && thief.firstChild.href) {
+                thief.href = thief.firstChild.href;
+            }
+
+            if (thief.href.indexOf('pl_info.php?id=' + wmt_page.playerId)) {
+                /*Моя засада*/
+                if (thief.nodeName != 'B') {
+                    /*Поражение*/
+                    let elapsed;
+                    let wd = getWarDate(btl[ii].textContent);
+
+                    if (wd) {                        
+                        let date = new Date('20' + wd.Year + '-' + wd.Month + '-' + wd.Day + 'T' + wd.Time + ':00+0300');
+                        if (date) {                            
+                            elapsed = getCurrentTime() - date.getTime();
+                        }
+                    }
+                    let timeout = guildTimeout.getThief();
+                    if (elapsed < timeout) {
+                        OwnInfo.Thief.Time = getCurrentTime();
+                        OwnInfo.Thief.Interval = timeout - elapsed;
+                    }
+                    else {
+                        OwnInfo.Thief.Time = undefined;
+                        OwnInfo.Thief.Interval = undefined;
+                    }
+
+                }
+                else {
+                    /*Победа*/
+                    OwnInfo.Thief.Time = undefined;
+                    OwnInfo.Thief.Interval = undefined;
+                }
+                break;
+            }            
         }
+    }
+
+    if (isMine) {
+        OwnInfo.store();
     }
 }
 wmt_ph.setupArtInfo = function () {
