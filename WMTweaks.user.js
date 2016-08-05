@@ -2618,6 +2618,15 @@ function wmt_updatechatlines(l) {
 		helper.appendChild(delAuthor);		
 		chatbox.appendChild(helper);
 		
+		chatbox.addEventListener('mouseover', () => {
+		    ChatDelay = 5;
+		    chatbox.style.border = '2px solid yellow';
+		});
+		chatbox.addEventListener('mouseout', () => {
+		    ChatDelay = 10;
+		    chatbox.style.border = '';
+		});
+
 		var wmt_time = chatbox.querySelectorAll('span.time');
 		for (var ii = 0; ii < wmt_time.length; ii++) {
 			var row = wmt_time[ii].parentNode; 
@@ -2707,7 +2716,46 @@ function setupChat() {
     ';\r\n function wmt_isInArray(array, value) { for (var ii = 0; ii < array.length; ii++) {\
     if (array[ii] === value) return true; }};\r\n' + wmt_updatechatlines.toString() + ';\r\n';
     document.body.appendChild(script);
-	window.eval('updatechatlines = wmt_updatechatlines;');	
+    window.eval('updatechatlines = wmt_updatechatlines;');
+     
+    let updateCl = () => {        
+        if (chatline.document.readyState == 'complete') {
+            let smilesImg = chatline.document.body.querySelector('img[usemap]');
+            if (smilesImg) {
+                let td = smilesImg.parentNode;
+                td.style.whiteSpace = 'nowrap';
+
+                let mmr = chatline.document.createElement('span');
+                mmr.className = 'wmt-chat-smiles-toggle';                
+                mmr.title = 'Показать смайлы';
+                mmr.addEventListener('click', () => {
+                    mmr.style.display = 'none';
+                    smilesImg.style.display = 'inline-block';
+                    //setTimeout(() => { mmr.style.display = ''; smilesImg.style.display = ''; }, 5000);
+                })
+                td.insertBefore(mmr, smilesImg.previousSibling);
+                
+                td.addEventListener('mouseleave', () => {
+                    mmr.style.display = ''; smilesImg.style.display = '';
+                })
+
+                let style = chatline.document.createElement('style');
+                style.innerHTML = '.wmt-chat-smiles-toggle { cursor: pointer; display: inline-block;\
+border:1px solid black; border-radius: 0.6rem; width: 1.2rem; height: 1.2rem; vertical-align: middle; \
+background: url("' + smilesImg.src + '") no-repeat; background-position: -1.2% -1%; }\
+.wmt-chat-smiles { display: none; }';
+                chatline.document.body.appendChild(style);
+                smilesImg.className += ' wmt-chat-smiles';
+            }
+            else {
+                log('no smiles img');
+            }
+        }
+        else {
+            setTimeout(updateCl, 1000);            
+        }        
+    }
+    updateCl();
 }
 
 /*Add some chars "c" to the begin of string representative of value "v", if it length less than "l"*/
@@ -7125,7 +7173,9 @@ wmt_ph.setupInventory = function () {
 .wmt-inv-arenda-recipient { margin: 1rem; font-size: inherit; width: 15rem; }\
 .wmt-inv-arenda-bc {  width: 3rem; text-align: center; font-size: inherit; -moz-user-select: none; }\
 .wmt-inv-arenda-bc:hover {  transform: scale(1.2); width: 4rem; }\
-.wmt-inv-arenda-send { margin-left: 1rem; font-size: inherit; }');
+.wmt-inv-arenda-send { margin-left: 1rem; font-size: inherit; }\
+.wmt-inf-offer-group { font-weight: bold; }\
+.wmt-inv-offer-cancel { float: right; cursor: pointer; text-decoration: underline;  }');
 
 	let updateRentDiv = function() {
 		let rentDiv = document.querySelector('div.wmt-inv-arenda-div');
@@ -7690,13 +7740,53 @@ wmt_ph.setupInventory = function () {
 			recipient.value = chatNick;
 		}
 	}
+
+	let checkAll = createElement('span');
+	checkAll.innerHTML = 'Выбрать все';
+	arendaDiv.appendChild(checkAll);
 	
 	let test = document.querySelector('div#test');
 	if (test) {	
 		test.parentNode.insertBefore(arendaDiv, test);
 	}
-	
-    updateItems();
+
+    /*cancelAll*/
+	let doCancelAll = function () {
+	    this.disabled = true;
+	    let tbl = getNthParentNode(this, 3);
+
+	    let canceNext = function (r) {
+	        let afl = tbl.querySelector('a[href*="trade_cancel.php?tid="]');
+	        if (afl) {	            
+	            log('canceling: ' + afl.href);                   
+	            setTimeout(() => { GM_xmlhttpRequest({ url: afl.href, method: 'get', onload: canceNext }) }, 500);
+	            let row = afl.parentNode.parentNode;
+	            if (row.nextSibling) {
+	                row.parentNode.removeChild(row.nextSibling);
+	            }
+	            row.parentNode.removeChild(row.previousSibling);
+	            row.parentNode.removeChild(row.previousSibling);	            
+	            row.parentNode.removeChild(row);	            
+	        }
+	        else {
+	            location.reload();
+	        }
+	    };
+	    canceNext();
+	}
+    let offerGroup = document.querySelectorAll('td.wbwhite[colspan="2"][bgcolor="#d0eed0"]');
+	for (let ii = 0; ii < offerGroup.length; ii++) {
+	    let cancelAll = createElement('span', 'wmt-inv-offer-cancel');
+	    cancelAll.innerHTML = 'Отменить все';
+	    cancelAll.addEventListener('click', doCancelAll);
+	    offerGroup[ii].appendChild(cancelAll);
+	    offerGroup[ii].className += ' wmt-inf-offer-group';	    
+	}
+    
+	updateItems();
+
+
+
 }
 wmt_ph.processInventory = function (xmlDoc) {
     var dropLink = xmlDoc.body.querySelector('a[href*="inventory.php?sell=235086379"]');
