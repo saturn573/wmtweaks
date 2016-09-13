@@ -1023,7 +1023,7 @@ OwnInfo.Mana = {
 /*Коэффициент трудоголика*/
 OwnInfo.WorkaholicPenaltyFactor = 1;
 /*Эффективность работы*/
-OwnInfo.WorkEfficiencyFactor = 2.4;
+OwnInfo.WorkEfficiencyFactor = 2.6;
 /*Последний бой*/
 OwnInfo.LastBattleId = undefined;
 /*Уникальная подпись для передач ресурсов / предметов или выбрасывания предметов */
@@ -1081,7 +1081,7 @@ OwnInfo.update = function (obsoleteTime) {
             OwnInfo.Mana.RestoreInterval = undefined;
             OwnInfo.Mana.Amount.Current = wmt_page.mana.amount;
         }
-    }
+    }    
     OwnInfo.store();
 };
 OwnInfo.store = function () {
