@@ -66,6 +66,10 @@ var guildTimeout = {
     //Hunter: 2400000
 }
 
+var weapon_mod = [
+    [0, ]
+];
+
 var craft_elements = [
 	['абразив', 'abrasive'],
 	['змеиный яд', 'snake_poison'],
@@ -430,6 +434,7 @@ wmt_CR.init = function () {
     wmt_CR.add('Рыцари смерти', 'deadknight', 190, 100);
     wmt_CR.add('Энты', 'treant', 187, 175);
     wmt_CR.add('Владычицы тени', 'matriarch', 185, 90);
+    wmt_CR.add('Хозяйки ночи', 'mistress', 185, 100);
     wmt_CR.add('Циклопы-короли', 'cyclopking', 182, 95);
     wmt_CR.add('Черные тролли', 'blacktroll', 180, 180);
     wmt_CR.add('Циклопы', 'cyclop', 172, 85);
@@ -8373,8 +8378,9 @@ wmt_ph.setupSmsCreate = function () {
 }
 
 wmt_ph.setupSms = function () {
-    
-
+    if (~location.search.indexOf('?box=out')) {
+        return;
+    }
     let ip = document.querySelector('form[action="sms.php"] input[name="search_nik"]');
     if (ip) {
         let tbl = getNthParentNode(ip, 4);
@@ -8392,6 +8398,8 @@ wmt_ph.setupSms = function () {
             let reloadTimeout;
 
             let checkUpdates = () => {
+                let messages = document.querySelectorAll('tr>td:nth-child(3)>a[href*="sms.php?sms_id="]');
+                
                 //сравнить максимальный sms_id с последним pageSettings.lastId
                 // если max_sms_id > pageSettings.lastId то pageSettings.lastId = max_sms_id и гудим
                 reloadTimeout = setTimeout(() => location.reload(), 45000);
@@ -8549,7 +8557,124 @@ wmt_ph.setupModWorkbench = function () {
             log('Unsupported table');
         }
     }
-    
+
+}
+
+wmt_ph.setupForumThread = function () {
+    //Getting the thread ID
+    let tId = getMatch(/forum_thread.php\?id=(\d+)/, location.toString());
+    if (tId && tId.length > 1) {
+        tId = +tId[1];
+    }
+
+    var tFilter = {
+        update: function () {
+            Storage.update(this);
+        },
+        store: function () {
+            Storage.store(this);
+        },
+        getStorageKey: function () {
+            return 'wmt_TFilter' + tId
+        }
+    };
+
+    /*Кузнецы и оружейники*/
+    if (tId == 22) {
+        addStyle('.wmt-ftread-filters {  }  .wmt-ftread-filters label { margin-right: 1rem; cursor: pointer; -moz-user-select: none; user-select: none; }');        
+        let tbl = document.querySelector('table.table3.forum.c_darker.td_bordered');
+        if (tbl) {
+            tFilter.update();
+            let updateRows = function () {
+                let vIndex = 0;
+                for (let ii = 1; ii < tbl.rows.length; ii++) {
+                    let row = tbl.rows[ii];
+                    let topic = row.cells[0].textContent; 
+                    let visible = false;
+                    if (/крафт/i.test(topic)) {
+                        if (tFilter.showCraftW || tFilter.showCraftA || tFilter.showCraftJ) {
+                            let weapon = getMatch(/\Bоруж\D*(\d)\D+(\d+)/, topic);
+                            let armor = getMatch(/\Bброн\D*(\d)\D+(\d+)/, topic);
+                            let jewel = getMatch(/\Bюв\D*(\d)\D+(\d+)/, topic);
+                            if ((weapon && tFilter.showCraftW && (tFilter.full || weapon[2] != '12'))
+                                || (armor && tFilter.showCraftA && (tFilter.full || armor[2] != '12'))
+                                || (jewel && tFilter.showCraftJ && (tFilter.full || jewel[2] != '12'))) {
+                                visible = true;
+                            }
+                        }
+                    }
+                    else if (/ремонт/i.test(topic)) {
+                        if (tFilter.showSmith) {
+                            let ef = getMatch(/\d+/, topic);
+                            visible = tFilter.full || (!ef || ef[0] != '90');                                                                                    
+                        }
+                    }
+                    else {
+                        visible = true;
+                    }
+                    row.style.display = visible ? '' : 'none';
+                    if (visible) {
+                        vIndex++;
+                        if ((vIndex % 2) == 0) {
+                            row.className = 'second';
+                        }
+                        else {
+                            row.className = '';
+                        }
+                    }
+                }
+            }
+            updateRows();
+            
+            let craftW = createCheckBoxWithText('Оружие');
+            craftW.input.checked = tFilter.showCraftW;
+            craftW.input.addEventListener('change', function () {
+                tFilter.showCraftW = this.checked;
+                tFilter.store();
+                updateRows();
+            });
+
+            let craftA = createCheckBoxWithText('Броня');
+            craftA.input.checked = tFilter.showCraftA;
+            craftA.input.addEventListener('change', function () {
+                tFilter.showCraftA = this.checked;
+                tFilter.store();
+                updateRows();
+            });
+
+            let craftJ = createCheckBoxWithText('Ювелир');
+            craftJ.input.checked = tFilter.showCraftJ;
+            craftJ.input.addEventListener('change', function () {
+                tFilter.showCraftJ = this.checked;
+                tFilter.store();
+                updateRows();
+            });
+
+            let smith = createCheckBoxWithText('Ремонт');
+            smith.input.checked = tFilter.showSmith;
+            smith.input.addEventListener('change', function () {
+                tFilter.showSmith = this.checked;
+                tFilter.store();
+                updateRows();
+            });
+
+            let full = createCheckBoxWithText('Макс.');
+            full.input.checked = tFilter.full;
+            full.input.addEventListener('change', function () {
+                tFilter.full = this.checked;
+                tFilter.store();
+                updateRows();
+            });
+
+            let filterDiv = createElement('div', 'wmt-ftread-filters');
+            filterDiv.appendChild(craftW);
+            filterDiv.appendChild(craftA);
+            filterDiv.appendChild(craftJ);
+            filterDiv.appendChild(smith);
+            filterDiv.appendChild(full);
+            tbl.parentNode.insertBefore(filterDiv, tbl);            
+        }
+    }
 }
 
 wmt_ph.process = function () {
@@ -8592,7 +8717,8 @@ wmt_ph.all = [
     new wmt_ph(/sms\.php/, wmt_ph.setupSms),
     new wmt_ph(/transfer\.php/, wmt_ph.setupTransfer),
     new wmt_ph(/el_transfer\.php/, wmt_ph.setupElTransfer),
-    new wmt_ph(/mod_workbench\.php/, wmt_ph.setupModWorkbench)
+    new wmt_ph(/mod_workbench\.php/, wmt_ph.setupModWorkbench),
+    new wmt_ph(/forum_thread\.php/, wmt_ph.setupForumThread)
 ];
 
 
