@@ -8742,5 +8742,9 @@ else {
     wmt_ph.process();
     initializeCommonStyles();
     if (Settings.useCustomMenu) { insertCustomMainMenu(); }
-    wmt_ph.setup();
+    wmt_ph.setup();    
 }
+
+(function initializeHash() {
+    window.strHash = "0x123456799abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+})();
